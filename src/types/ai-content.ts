@@ -10,6 +10,7 @@ export interface GenerateContentRequest {
   platform: Platform;
   contentType: ContentType;
   maxLength?: number;
+  context?: string;
 }
 
 export interface GeneratedContent {

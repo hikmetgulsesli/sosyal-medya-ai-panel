@@ -30,12 +30,13 @@ export default function ContentGeneratorPage() {
     setIsGenerating(true);
 
     try {
+      const token = getToken();
       const content = await generateContent({
         topic: formData.topic,
         tone: formData.tone,
         platform: formData.platform,
         contentType: formData.contentType,
-      });
+      }, token || undefined);
       setGeneratedContent(content);
     } catch (err) {
       const message =
@@ -56,7 +57,16 @@ export default function ContentGeneratorPage() {
 
     try {
       const token = getToken();
-      await saveToScheduler(contentId, scheduledAt, token || undefined);
+      if (!generatedContent) {
+        throw new Error("No content to schedule");
+      }
+      await saveToScheduler(
+        contentId,
+        generatedContent.content,
+        generatedContent.platform,
+        scheduledAt,
+        token || undefined
+      );
       setSuccessMessage(
         scheduledAt
           ? "Content scheduled successfully!"
