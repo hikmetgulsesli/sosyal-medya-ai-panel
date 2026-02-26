@@ -342,14 +342,39 @@ class TestAIService:
 class TestAIGenerationAPI:
     """Test AI generation API endpoints."""
     
+    def _get_auth_token(self, client):
+        """Helper to register and login a test user."""
+        # Register user using form data
+        reg_response = client.post("/api/auth/register", data={
+            "email": "aitest@example.com",
+            "password": "securepassword123",
+            "full_name": "AI Test User"
+        })
+        # User might already exist from previous test run - 201 or 409 are both OK
+        if reg_response.status_code not in [200, 201, 409]:
+            assert False, f"Registration failed: {reg_response.json()}"
+        
+        # Login using form data
+        login_response = client.post("/api/auth/login", data={
+            "username": "aitest@example.com",
+            "password": "securepassword123"
+        })
+        assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
+        return login_response.json()["access_token"]
+    
     def test_get_ai_status(self, client):
         """Test GET /api/ai/status endpoint."""
+        token = self._get_auth_token(client)
+        
         with patch('app.routers.ai_generation.ai_service') as mock_service:
             mock_service.get_available_provider.return_value = "minimax"
             mock_service.primary_provider.is_available.return_value = True
             mock_service.fallback_provider.is_available.return_value = True
             
-            response = client.get("/api/ai/status")
+            response = client.get(
+                "/api/ai/status",
+                headers={"Authorization": f"Bearer {token}"}
+            )
             
             assert response.status_code == 200
             data = response.json()
@@ -360,12 +385,17 @@ class TestAIGenerationAPI:
     
     def test_get_ai_status_unavailable(self, client):
         """Test AI status when no providers available."""
+        token = self._get_auth_token(client)
+        
         with patch('app.routers.ai_generation.ai_service') as mock_service:
             mock_service.get_available_provider.return_value = "none"
             mock_service.primary_provider.is_available.return_value = False
             mock_service.fallback_provider.is_available.return_value = False
             
-            response = client.get("/api/ai/status")
+            response = client.get(
+                "/api/ai/status",
+                headers={"Authorization": f"Bearer {token}"}
+            )
             
             assert response.status_code == 200
             data = response.json()
