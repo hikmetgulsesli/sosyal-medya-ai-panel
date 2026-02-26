@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Work_Sans } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/hooks/use-auth";
-import { ThemeProvider } from "@/hooks/use-theme";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-heading",
@@ -43,11 +42,7 @@ export default function RootLayout({
       <body
         className={`${plusJakartaSans.variable} ${workSans.variable} antialiased`}
       >
-        <AuthProvider>
-          <ThemeProvider>
-            {children}
-          </ThemeProvider>
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -1,5 +1,3 @@
-// Auth types for the application
-
 export interface User {
   id: string;
   email: string;
@@ -7,12 +5,6 @@ export interface User {
   avatar?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
 }
 
 export interface LoginCredentials {
@@ -27,13 +19,23 @@ export interface RegisterCredentials {
   confirmPassword: string;
 }
 
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  expiresAt?: number;
+}
+
 export interface AuthResponse {
   user: User;
   tokens: AuthTokens;
 }
 
-export interface AuthError {
-  code: string;
-  message: string;
-  field?: string;
+export interface AuthContextType {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  register: (credentials: RegisterCredentials) => Promise<void>;
+  logout: () => void;
 }

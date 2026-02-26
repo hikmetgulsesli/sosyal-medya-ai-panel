@@ -15,7 +15,13 @@ export function setTokens(tokens: AuthTokens): void {
   
   localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
-  localStorage.setItem(TOKEN_EXPIRY_KEY, tokens.expiresAt.toString());
+  if (tokens.expiresAt) {
+    localStorage.setItem(TOKEN_EXPIRY_KEY, tokens.expiresAt.toString());
+  } else {
+    // Calculate expiry from expiresIn (default 24 hours)
+    const expiry = Date.now() + (tokens.expiresIn || 86400) * 1000;
+    localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
+  }
 }
 
 /**
@@ -35,6 +41,7 @@ export function getTokens(): AuthTokens | null {
   return {
     accessToken,
     refreshToken,
+    expiresIn: 0,
     expiresAt: parseInt(expiresAt, 10),
   };
 }
@@ -87,7 +94,7 @@ export function isAuthenticated(): boolean {
   const now = Date.now();
   const buffer = 5 * 60 * 1000; // 5 minutes
   
-  return tokens.expiresAt > now + buffer;
+  return (tokens.expiresAt || 0) > now + buffer;
 }
 
 /**
