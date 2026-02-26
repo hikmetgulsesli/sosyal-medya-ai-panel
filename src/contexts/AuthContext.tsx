@@ -5,6 +5,8 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import type {
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = async (credentials: LoginCredentials): Promise<void> => {
+  const login = useCallback(async (credentials: LoginCredentials): Promise<void> => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/auth/login", {
@@ -60,9 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const register = async (credentials: RegisterCredentials): Promise<void> => {
+  const register = useCallback(async (credentials: RegisterCredentials): Promise<void> => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/auth/register", {
@@ -84,9 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const logout = (): void => {
+  const logout = useCallback((): void => {
     setUser(null);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(STORAGE_KEY);
@@ -95,16 +97,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch("/api/auth/logout", { method: "POST" }).catch(() => {
       // Silent fail - client-side cleanup is what matters
     });
-  };
+  }, []);
 
-  const value: AuthContextType = {
+  const getToken = useCallback((): string | null => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    try {
+      const tokens: AuthTokens = JSON.parse(stored);
+      return tokens.accessToken;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const value: AuthContextType = useMemo(() => ({
     user,
     isAuthenticated: !!user,
     isLoading,
+    getToken,
     login,
     register,
     logout,
-  };
+  }), [user, isLoading, getToken, login, register, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
