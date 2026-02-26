@@ -1,12 +1,14 @@
 {
-  "name": "sosyal-medya-ai-panel",
+  "name": "social-media-ai-panel",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3522",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start -p 3522",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"Tests not configured yet\" && exit 0"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
