@@ -13,6 +13,7 @@ import type {
   RegisterCredentials,
   AuthContextType,
   AuthResponse,
+  AuthTokens,
 } from "@/types/auth";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -97,6 +98,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const getToken = (): string | null => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    try {
+      const tokens: AuthTokens = JSON.parse(stored);
+      return tokens.accessToken;
+    } catch {
+      return null;
+    }
+  };
+
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
@@ -104,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     logout,
+    getToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
