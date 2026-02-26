@@ -3,8 +3,8 @@
 Supports MiniMax as primary provider with OpenAI fallback.
 """
 import os
-import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
@@ -12,6 +12,30 @@ import httpx
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+# Delimiter to separate user input from system instructions (prevent prompt injection)
+INPUT_DELIMITER = "<<<INPUT>>>"
+INPUT_DELIMITER_END = "<<<ENDINPUT>>>"
+
+
+def _build_system_prompt(tone: str) -> str:
+    """Build system prompt based on tone (shared by all providers)."""
+    tone_prompts = {
+        "professional": "You are a professional social media content creator. Write in a professional, business-appropriate tone.",
+        "casual": "You are a friendly social media content creator. Write in a casual, conversational tone.",
+        "witty": "You are a witty social media content creator. Write with humor and clever wordplay.",
+        "inspirational": "You are an inspirational social media content creator. Write motivational and uplifting content.",
+        "educational": "You are an educational content creator. Write informative, clear, and helpful content.",
+        "promotional": "You are a marketing expert. Write persuasive, engaging promotional content.",
+    }
+    return tone_prompts.get(tone, tone_prompts["professional"])
+
+
+def _build_user_prompt(prompt: str, context: Optional[str] = None) -> str:
+    """Build user prompt with delimiter to prevent prompt injection."""
+    if context:
+        return f"{INPUT_DELIMITER}{context}{INPUT_DELIMITER_END}\n\n{INPUT_DELIMITER}{prompt}{INPUT_DELIMITER_END}"
+    return f"{INPUT_DELIMITER}{prompt}{INPUT_DELIMITER_END}"
 
 
 @dataclass
@@ -80,12 +104,10 @@ class MiniMaxProvider(AIProvider):
             }
             
             # Build system prompt based on tone
-            system_prompt = self._build_system_prompt(request.tone)
+            system_prompt = _build_system_prompt(request.tone)
             
-            # Build user prompt with context if provided
-            user_prompt = request.prompt
-            if request.context:
-                user_prompt = f"Context: {request.context}\n\nTask: {request.prompt}"
+            # Build user prompt with context if provided (using delimiter to prevent prompt injection)
+            user_prompt = _build_user_prompt(request.prompt, request.context)
             
             payload = {
                 "model": self.model,
@@ -141,18 +163,6 @@ class MiniMaxProvider(AIProvider):
                 model=self.model,
                 error=f"Generation failed: {str(e)}"
             )
-    
-    def _build_system_prompt(self, tone: str) -> str:
-        """Build system prompt based on tone."""
-        tone_prompts = {
-            "professional": "You are a professional social media content creator. Write in a professional, business-appropriate tone.",
-            "casual": "You are a friendly social media content creator. Write in a casual, conversational tone.",
-            "witty": "You are a witty social media content creator. Write with humor and clever wordplay.",
-            "inspirational": "You are an inspirational social media content creator. Write motivational and uplifting content.",
-            "educational": "You are an educational content creator. Write informative, clear, and helpful content.",
-            "promotional": "You are a marketing expert. Write persuasive, engaging promotional content.",
-        }
-        return tone_prompts.get(tone, tone_prompts["professional"])
 
 
 class OpenAIProvider(AIProvider):
@@ -181,11 +191,10 @@ class OpenAIProvider(AIProvider):
             )
         
         try:
-            system_prompt = self._build_system_prompt(request.tone)
+            system_prompt = _build_system_prompt(request.tone)
             
-            user_prompt = request.prompt
-            if request.context:
-                user_prompt = f"Context: {request.context}\n\nTask: {request.prompt}"
+            # Build user prompt with delimiter to prevent prompt injection
+            user_prompt = _build_user_prompt(request.prompt, request.context)
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -213,18 +222,6 @@ class OpenAIProvider(AIProvider):
                 model=self.model,
                 error=f"Generation failed: {str(e)}"
             )
-    
-    def _build_system_prompt(self, tone: str) -> str:
-        """Build system prompt based on tone."""
-        tone_prompts = {
-            "professional": "You are a professional social media content creator. Write in a professional, business-appropriate tone.",
-            "casual": "You are a friendly social media content creator. Write in a casual, conversational tone.",
-            "witty": "You are a witty social media content creator. Write with humor and clever wordplay.",
-            "inspirational": "You are an inspirational social media content creator. Write motivational and uplifting content.",
-            "educational": "You are an educational content creator. Write informative, clear, and helpful content.",
-            "promotional": "You are a marketing expert. Write persuasive, engaging promotional content.",
-        }
-        return tone_prompts.get(tone, tone_prompts["professional"])
 
 
 class AIService:

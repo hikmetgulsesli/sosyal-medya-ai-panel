@@ -1,5 +1,6 @@
 """AI Content Generation API routes."""
 import logging
+import re
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -25,6 +26,21 @@ from app.schemas.ai_generation import (
 from app.services.ai_service import ai_service, GenerationRequest
 
 logger = logging.getLogger(__name__)
+
+# Common words to filter when parsing hashtags (module-level constant)
+_COMMON_WORDS = frozenset({
+    'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
+    'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his',
+    'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy',
+    'did', 'she', 'use', 'way', 'many', 'oil', 'sit', 'set', 'run', 'eat',
+    'far', 'sea', 'eye', 'ago', 'off', 'too', 'any', 'say', 'man', 'try',
+    'ask', 'end', 'why', 'let', 'put', 'own', 'tell', 'very', 'when', 'much',
+    'would', 'there', 'their', 'what', 'said', 'each', 'which', 'will',
+    'about', 'could', 'other', 'after', 'first', 'never', 'these', 'think',
+    'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those',
+    'while', 'this', 'that', 'with', 'have', 'from', 'they', 'know', 'want',
+    'been', 'good', 'some', 'time', 'than', 'them', 'well', 'were'
+})
 router = APIRouter(prefix="/ai", tags=["AI Generation"])
 
 
@@ -44,23 +60,6 @@ def _get_template_if_provided(
     ).first()
     
     return template
-
-
-def _apply_template_to_request(
-    template: Optional[ContentTemplate],
-    request_data: dict
-) -> dict:
-    """Apply template settings to request data."""
-    if not template:
-        return request_data
-    
-    # Override with template values if not explicitly set
-    if template.tone and "tone" not in request_data:
-        request_data["tone"] = template.tone
-    if template.max_length and "max_length" not in request_data:
-        request_data["max_length"] = template.max_length
-    
-    return request_data
 
 
 @router.post("/generate/post", response_model=GeneratePostResponse)
@@ -177,7 +176,6 @@ def _parse_thread_content(content: str, expected_posts: int) -> list[ThreadPost]
             continue
         
         # Check if line starts with a number (e.g., "1.", "1)", "Post 1:")
-        import re
         match = re.match(r'^(?:Post\s*)?(\d+)[:.)\s]+(.+)', line, re.IGNORECASE)
         
         if match:
@@ -290,18 +288,15 @@ def suggest_hashtags(
 
 def _parse_hashtags(content: str) -> list[str]:
     """Parse hashtags from AI response."""
-    import re
-    
     # Find all hashtags
     hashtags = re.findall(r'#\w+', content)
     
     # If no hashtags found, try to extract words and add #
     if not hashtags:
         words = re.findall(r'\b\w+\b', content)
-        # Filter out common words and short words
-        common_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'she', 'use', 'her', 'way', 'many', 'oil', 'sit', 'set', 'run', 'eat', 'far', 'sea', 'eye', 'ago', 'off', 'too', 'any', 'say', 'man', 'try', 'ask', 'end', 'why', 'let', 'put', 'say', 'she', 'try', 'way', 'own', 'say', 'too', 'old', 'tell', 'very', 'when', 'much', 'would', 'there', 'their', 'what', 'said', 'each', 'which', 'will', 'about', 'could', 'other', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'while', 'this', 'that', 'with', 'have', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'time', 'than', 'them', 'well', 'were'}
+        # Filter out common words and short words using module-level constant
         hashtags = [f"#{word.lower()}" for word in words 
-                   if len(word) > 3 and word.lower() not in common_words]
+                   if len(word) > 3 and word.lower() not in _COMMON_WORDS]
     
     # Remove duplicates while preserving order
     seen = set()

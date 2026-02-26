@@ -1,5 +1,6 @@
 """Tests for AI content generation service."""
 import pytest
+import httpx
 from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
@@ -71,8 +72,6 @@ class TestAIProviders:
     @patch('app.services.ai_service.httpx.Client')
     def test_minimax_provider_api_error(self, mock_client_class):
         """Test MiniMax provider handles API errors."""
-        import httpx
-        
         mock_client = Mock()
         mock_client.post.side_effect = httpx.HTTPError("Connection failed")
         mock_client.__enter__ = Mock(return_value=mock_client)
@@ -409,7 +408,7 @@ class TestAIGenerationAPI:
         
         assert response.status_code == 401
     
-    def test_generate_post_service_unavailable(self, client, test_user):
+    def test_generate_post_service_unavailable(self, client):
         """Test generate post when AI service is unavailable."""
         # Login to get token
         with patch('app.routers.ai_generation.ai_service') as mock_service:
