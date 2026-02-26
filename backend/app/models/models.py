@@ -139,7 +139,7 @@ class Post(Base):
 
 class ScheduledPost(Base):
     __tablename__ = "scheduled_posts"
-    
+
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     platform_id = Column(String(36), ForeignKey("platforms.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -153,15 +153,15 @@ class ScheduledPost(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+
     # Relationships
     user = relationship("User", back_populates="scheduled_posts")
     platform = relationship("Platform", back_populates="scheduled_posts")
-    
+
     __table_args__ = (
         Index('ix_scheduled_posts_user_status', 'user_id', 'status'),
         Index('ix_scheduled_posts_scheduled', 'scheduled_at', 'status'),
-        Index('ix_scheduled_posts_priority', 'priority'),
+        Index('ix_scheduled_posts_priority', 'priority', 'scheduled_at'),
     )
 
 
@@ -182,4 +182,30 @@ class AnalyticsEvent(Base):
     __table_args__ = (
         Index('ix_analytics_events_post_type', 'post_id', 'event_type'),
         Index('ix_analytics_events_recorded', 'recorded_at'),
+    )
+
+
+class ContentTemplate(Base):
+    """Content templates for AI generation."""
+    __tablename__ = "content_templates"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    template_type = Column(String(50), nullable=False)  # 'post', 'thread', 'hashtag_suggestions'
+    tone = Column(String(50), default="professional", nullable=False)
+    prompt_template = Column(Text, nullable=False)
+    max_length = Column(Integer, default=280, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    user = relationship("User", backref="content_templates")
+    
+    __table_args__ = (
+        Index('ix_content_templates_user_type', 'user_id', 'template_type'),
+        Index('ix_content_templates_user_active', 'user_id', 'is_active'),
     )

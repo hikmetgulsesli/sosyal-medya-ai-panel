@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.db.database import engine, Base
-from app.routers import auth, scheduler
+from app.routers import auth, scraping, competitors, platforms, api_keys, analytics, scheduler
 
 settings = get_settings()
 
@@ -21,15 +21,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers with /api prefix
 app.include_router(auth.router, prefix="/api")
+app.include_router(scraping.router, prefix="/api")
+app.include_router(competitors.router, prefix="/api")
+app.include_router(platforms.router, prefix="/api")
+app.include_router(api_keys.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 
 
 @app.on_event("startup")
 def create_tables():
     """Create database tables on startup."""
-    Base.metadata.create_all(bind=engine)
+    # Skip table creation in test environment
+    if settings.environment != "test":
+        Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")

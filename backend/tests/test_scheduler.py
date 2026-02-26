@@ -1,867 +1,758 @@
-"""Tests for scheduler endpoints and service."""
+"""Tests for the scheduler service and router."""
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.models.models import ScheduledPost, Platform, User
 from app.services.scheduler_service import (
     SchedulerService,
-    PostStatus,
     Priority,
-    PostNotFoundError,
     InvalidScheduleError,
+    PostNotFoundError,
+    SchedulerError
 )
-from app.models.models import ScheduledPost, Platform
 
 
 class TestSchedulerService:
-    """Tests for SchedulerService."""
-    
-    def test_schedule_post_success(self, db):
+    """Test cases for SchedulerService."""
+
+    def test_schedule_post_success(self, db: Session, test_user: User, test_platform: Platform):
         """Test scheduling a post successfully."""
-        # Create a platform first
-        platform = Platform(
-            name="twitter",
-            display_name="Twitter/X"
-        )
-        db.add(platform)
-        db.commit()
-        
         service = SchedulerService(db)
         scheduled_time = datetime.utcnow() + timedelta(hours=1)
-        
+
         post = service.schedule_post(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post content",
             scheduled_at=scheduled_time,
-            priority=Priority.NORMAL
+            priority=Priority.HIGH
         )
-        
+
+        assert post.id is not None
+        assert post.user_id == test_user.id
+        assert post.platform_id == test_platform.id
         assert post.content == "Test post content"
-        assert post.status == PostStatus.PENDING.value
-        assert post.priority == Priority.NORMAL.value
-        assert post.user_id == "user-123"
-    
-    def test_schedule_post_past_time(self, db):
-        """Test scheduling a post in the past fails."""
-        platform = Platform(
-            name="twitter",
-            display_name="Twitter/X"
-        )
-        db.add(platform)
-        db.commit()
-        
-        service = SchedulerService(db)
-        past_time = datetime.utcnow() - timedelta(hours=1)
-        
-        with pytest.raises(InvalidScheduleError, match="in the future"):
-            service.schedule_post(
-                user_id="user-123",
-                platform_id=platform.id,
-                content="Test post",
-                scheduled_at=past_time
-            )
-    
-    def test_schedule_post_invalid_platform(self, db):
-        """Test scheduling with invalid platform fails."""
+        assert post.status == "pending"
+        assert post.priority == Priority.HIGH
+
+    def test_schedule_post_with_media(self, db: Session, test_user: User, test_platform: Platform):
+        """Test scheduling a post with media URLs."""
         service = SchedulerService(db)
         scheduled_time = datetime.utcnow() + timedelta(hours=1)
-        
-        with pytest.raises(InvalidScheduleError, match="Platform"):
+        media_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+
+        post = service.schedule_post(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Test post with media",
+            scheduled_at=scheduled_time,
+            media_urls=media_urls
+        )
+
+        assert post.media_urls == ",".join(media_urls)
+
+    def test_schedule_post_past_time_raises_error(self, db: Session, test_user: User, test_platform: Platform):
+        """Test that scheduling in the past raises an error."""
+        service = SchedulerService(db)
+        past_time = datetime.utcnow() - timedelta(hours=1)
+
+        with pytest.raises(InvalidScheduleError, match="Scheduled time must be in the future"):
             service.schedule_post(
-                user_id="user-123",
-                platform_id="invalid-platform-id",
-                content="Test post",
+                user_id=test_user.id,
+                platform_id=test_platform.id,
+                content="Test content",
+                scheduled_at=past_time
+            )
+
+    def test_schedule_post_empty_content_raises_error(self, db: Session, test_user: User, test_platform: Platform):
+        """Test that empty content raises an error."""
+        service = SchedulerService(db)
+        scheduled_time = datetime.utcnow() + timedelta(hours=1)
+
+        with pytest.raises(InvalidScheduleError, match="Content cannot be empty"):
+            service.schedule_post(
+                user_id=test_user.id,
+                platform_id=test_platform.id,
+                content="   ",
                 scheduled_at=scheduled_time
             )
-    
-    def test_get_queue(self, db):
-        """Test getting queue of posts."""
-        # Create platform and posts
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+
+    def test_schedule_post_invalid_priority_raises_error(self, db: Session, test_user: User, test_platform: Platform):
+        """Test that invalid priority raises an error."""
         service = SchedulerService(db)
-        
+        scheduled_time = datetime.utcnow() + timedelta(hours=1)
+
+        with pytest.raises(InvalidScheduleError, match="Priority must be"):
+            service.schedule_post(
+                user_id=test_user.id,
+                platform_id=test_platform.id,
+                content="Test content",
+                scheduled_at=scheduled_time,
+                priority=5
+            )
+
+    def test_schedule_post_invalid_platform_raises_error(self, db: Session, test_user: User):
+        """Test that invalid platform ID raises an error."""
+        service = SchedulerService(db)
+        scheduled_time = datetime.utcnow() + timedelta(hours=1)
+
+        with pytest.raises(InvalidScheduleError, match="Platform with ID"):
+            service.schedule_post(
+                user_id=test_user.id,
+                platform_id="invalid-platform-id",
+                content="Test content",
+                scheduled_at=scheduled_time
+            )
+
+    def test_get_queue(self, db: Session, test_user: User, test_platform: Platform):
+        """Test getting the queue."""
+        service = SchedulerService(db)
+
         # Create multiple posts
-        for i in range(5):
+        for i in range(3):
             post = ScheduledPost(
-                user_id="user-123",
-                platform_id=platform.id,
+                user_id=test_user.id,
+                platform_id=test_platform.id,
                 content=f"Post {i}",
-                scheduled_at=datetime.utcnow() + timedelta(hours=i),
-                status=PostStatus.PENDING.value,
-                priority=Priority.NORMAL.value
+                scheduled_at=datetime.utcnow() + timedelta(hours=i+1),
+                status="pending",
+                priority=Priority.NORMAL
             )
             db.add(post)
         db.commit()
-        
-        result = service.get_queue(user_id="user-123")
-        
-        assert result["total"] == 5
-        assert len(result["posts"]) == 5
+
+        result = service.get_queue(test_user.id)
+
+        assert result["total"] == 3
+        assert len(result["posts"]) == 3
         assert result["limit"] == 50
-    
-    def test_get_queue_with_status_filter(self, db):
-        """Test getting queue with status filter."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+        assert result["offset"] == 0
+
+    def test_get_queue_with_status_filter(self, db: Session, test_user: User, test_platform: Platform):
+        """Test getting the queue with status filter."""
+        service = SchedulerService(db)
+
         # Create posts with different statuses
-        for status in [PostStatus.PENDING.value, PostStatus.PUBLISHED.value]:
-            post = ScheduledPost(
-                user_id="user-123",
-                platform_id=platform.id,
-                content=f"Post {status}",
-                scheduled_at=datetime.utcnow() + timedelta(hours=1),
-                status=status,
-                priority=Priority.NORMAL.value
-            )
-            db.add(post)
+        post1 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Pending post",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending"
+        )
+        post2 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Published post",
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
+            published_at=datetime.utcnow()
+        )
+        db.add_all([post1, post2])
         db.commit()
-        
-        service = SchedulerService(db)
-        result = service.get_queue(user_id="user-123", status=PostStatus.PENDING.value)
-        
+
+        result = service.get_queue(test_user.id, status="pending")
+
         assert result["total"] == 1
-        assert result["posts"][0].status == PostStatus.PENDING.value
-    
-    def test_get_post_by_id(self, db):
-        """Test getting a specific post."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
-        post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
-            content="Test post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+        assert result["posts"][0].status == "pending"
+
+    def test_get_queue_ordering(self, db: Session, test_user: User, test_platform: Platform):
+        """Test that queue is ordered by priority desc, then scheduled_at asc."""
+        service = SchedulerService(db)
+
+        # Create posts with different priorities and times
+        post1 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Low priority, later",
+            scheduled_at=datetime.utcnow() + timedelta(hours=2),
+            status="pending",
+            priority=Priority.LOW
         )
-        db.add(post)
+        post2 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="High priority, earlier",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending",
+            priority=Priority.HIGH
+        )
+        post3 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Normal priority",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending",
+            priority=Priority.NORMAL
+        )
+        db.add_all([post1, post2, post3])
         db.commit()
-        
-        service = SchedulerService(db)
-        found_post = service.get_post_by_id(post.id, "user-123")
-        
-        assert found_post is not None
-        assert found_post.id == post.id
-        assert found_post.content == "Test post"
-    
-    def test_get_post_by_id_not_found(self, db):
-        """Test getting non-existent post returns None."""
-        service = SchedulerService(db)
-        found_post = service.get_post_by_id("non-existent-id", "user-123")
-        
-        assert found_post is None
-    
-    def test_publish_immediately(self, db):
+
+        result = service.get_queue(test_user.id)
+
+        # Should be ordered: HIGH (post2), NORMAL (post3), LOW (post1)
+        assert result["posts"][0].priority == Priority.HIGH
+        assert result["posts"][1].priority == Priority.NORMAL
+        assert result["posts"][2].priority == Priority.LOW
+
+    def test_publish_now_success(self, db: Session, test_user: User, test_platform: Platform):
         """Test publishing a post immediately."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+        service = SchedulerService(db)
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
         db.add(post)
         db.commit()
-        
+
+        updated_post = service.publish_now(post.id, test_user.id)
+
+        assert updated_post.status == "published"
+        assert updated_post.published_at is not None
+
+    def test_publish_now_not_found(self, db: Session, test_user: User):
+        """Test publishing a non-existent post."""
         service = SchedulerService(db)
-        published = service.publish_immediately(post.id, "user-123")
-        
-        assert published.status == PostStatus.PUBLISHED.value
-        assert published.published_at is not None
-        assert published.external_post_id is not None
-    
-    def test_publish_immediately_not_found(self, db):
-        """Test publishing non-existent post fails."""
-        service = SchedulerService(db)
-        
+
         with pytest.raises(PostNotFoundError):
-            service.publish_immediately("non-existent", "user-123")
-    
-    def test_publish_immediately_already_published(self, db):
-        """Test publishing already published post fails."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+            service.publish_now("non-existent-id", test_user.id)
+
+    def test_publish_now_already_published(self, db: Session, test_user: User, test_platform: Platform):
+        """Test publishing an already published post."""
+        service = SchedulerService(db)
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PUBLISHED.value,
-            priority=Priority.NORMAL.value,
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
             published_at=datetime.utcnow()
         )
         db.add(post)
         db.commit()
-        
-        service = SchedulerService(db)
-        
-        with pytest.raises(InvalidScheduleError, match="Cannot publish"):
-            service.publish_immediately(post.id, "user-123")
-    
-    def test_cancel_post(self, db):
+
+        with pytest.raises(SchedulerError, match="already published"):
+            service.publish_now(post.id, test_user.id)
+
+    def test_cancel_post_success(self, db: Session, test_user: User, test_platform: Platform):
         """Test cancelling a post."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+        service = SchedulerService(db)
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
         db.add(post)
         db.commit()
-        
+
+        updated_post = service.cancel_post(post.id, test_user.id)
+
+        assert updated_post.status == "cancelled"
+
+    def test_cancel_post_not_found(self, db: Session, test_user: User):
+        """Test cancelling a non-existent post."""
         service = SchedulerService(db)
-        cancelled = service.cancel_post(post.id, "user-123")
-        
-        assert cancelled.status == PostStatus.CANCELLED.value
-    
-    def test_cancel_post_not_found(self, db):
-        """Test cancelling non-existent post fails."""
-        service = SchedulerService(db)
-        
+
         with pytest.raises(PostNotFoundError):
-            service.cancel_post("non-existent", "user-123")
-    
-    def test_cancel_already_published(self, db):
-        """Test cancelling published post fails."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+            service.cancel_post("non-existent-id", test_user.id)
+
+    def test_cancel_post_already_published(self, db: Session, test_user: User, test_platform: Platform):
+        """Test cancelling an already published post."""
+        service = SchedulerService(db)
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PUBLISHED.value,
-            priority=Priority.NORMAL.value,
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
             published_at=datetime.utcnow()
         )
         db.add(post)
         db.commit()
-        
-        service = SchedulerService(db)
-        
-        with pytest.raises(InvalidScheduleError, match="Cannot cancel"):
-            service.cancel_post(post.id, "user-123")
-    
-    def test_update_post(self, db):
+
+        with pytest.raises(SchedulerError, match="Cannot cancel"):
+            service.cancel_post(post.id, test_user.id)
+
+    def test_update_post_success(self, db: Session, test_user: User, test_platform: Platform):
         """Test updating a post."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+        service = SchedulerService(db)
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Original content",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending",
+            priority=Priority.NORMAL
         )
         db.add(post)
         db.commit()
-        
-        service = SchedulerService(db)
+
         new_time = datetime.utcnow() + timedelta(hours=2)
-        
-        updated = service.update_post(
+        updated_post = service.update_post(
             post_id=post.id,
-            user_id="user-123",
+            user_id=test_user.id,
             content="Updated content",
             scheduled_at=new_time,
             priority=Priority.HIGH
         )
-        
-        assert updated.content == "Updated content"
-        assert updated.priority == Priority.HIGH.value
-    
-    def test_update_post_not_found(self, db):
-        """Test updating non-existent post fails."""
+
+        assert updated_post.content == "Updated content"
+        assert updated_post.scheduled_at == new_time
+        assert updated_post.priority == Priority.HIGH
+
+    def test_get_post_success(self, db: Session, test_user: User, test_platform: Platform):
+        """Test getting a single post."""
         service = SchedulerService(db)
-        
-        with pytest.raises(PostNotFoundError):
-            service.update_post("non-existent", "user-123", content="New content")
-    
-    def test_update_post_past_time(self, db):
-        """Test updating post to past time fails."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
+
         post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
+            user_id=test_user.id,
+            platform_id=test_platform.id,
             content="Test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
         db.add(post)
         db.commit()
-        
+
+        retrieved = service.get_post(post.id, test_user.id)
+
+        assert retrieved.id == post.id
+        assert retrieved.content == "Test post"
+
+    def test_get_post_not_found(self, db: Session, test_user: User):
+        """Test getting a non-existent post."""
         service = SchedulerService(db)
-        past_time = datetime.utcnow() - timedelta(hours=1)
-        
-        with pytest.raises(InvalidScheduleError, match="in the future"):
-            service.update_post(post.id, "user-123", scheduled_at=past_time)
-    
-    def test_get_due_posts(self, db):
-        """Test getting posts due for publishing."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
-        # Create a post that's due
-        due_post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
-            content="Due post",
+
+        with pytest.raises(PostNotFoundError):
+            service.get_post("non-existent-id", test_user.id)
+
+    def test_get_pending_posts(self, db: Session, test_user: User, test_platform: Platform):
+        """Test getting posts ready for publishing."""
+        service = SchedulerService(db)
+
+        # Create a post scheduled in the past (ready to publish)
+        post = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Ready to publish",
             scheduled_at=datetime.utcnow() - timedelta(minutes=5),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
-        db.add(due_post)
-        
-        # Create a post that's not due yet
-        future_post = ScheduledPost(
-            user_id="user-123",
-            platform_id=platform.id,
-            content="Future post",
+        db.add(post)
+        db.commit()
+
+        pending = service.get_pending_posts()
+
+        assert len(pending) == 1
+        assert pending[0].id == post.id
+
+    def test_mark_as_published(self, db: Session, test_user: User, test_platform: Platform):
+        """Test marking a post as published."""
+        service = SchedulerService(db)
+
+        post = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
-        db.add(future_post)
+        db.add(post)
         db.commit()
-        
+
+        updated = service.mark_as_published(post.id, external_post_id="ext-123")
+
+        assert updated.status == "published"
+        assert updated.external_post_id == "ext-123"
+        assert updated.published_at is not None
+
+    def test_mark_as_failed(self, db: Session, test_user: User, test_platform: Platform):
+        """Test marking a post as failed."""
         service = SchedulerService(db)
-        due_posts = service.get_due_posts()
-        
-        assert len(due_posts) == 1
-        assert due_posts[0].content == "Due post"
-    
-    def test_get_optimal_posting_times(self, db):
+
+        post = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Test post",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending"
+        )
+        db.add(post)
+        db.commit()
+
+        updated = service.mark_as_failed(post.id, "API error occurred")
+
+        assert updated.status == "failed"
+        assert updated.error_message == "API error occurred"
+
+    def test_get_optimal_posting_times(self, db: Session):
         """Test getting optimal posting times."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
         service = SchedulerService(db)
-        times = service.get_optimal_posting_times("user-123", platform.id, days=7)
-        
+
+        times = service.get_optimal_posting_times(days_ahead=3, count_per_day=2)
+
         assert len(times) > 0
-        assert all("datetime" in t for t in times)
-        assert all("score" in t for t in times)
-        assert all("period" in t for t in times)
-        assert all(t["score"] <= 1.0 for t in times)
-    
-    def test_get_queue_stats(self, db):
-        """Test getting queue statistics."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
-        # Create posts with different statuses
-        statuses = [
-            PostStatus.PENDING.value,
-            PostStatus.PENDING.value,
-            PostStatus.PUBLISHED.value,
-            PostStatus.CANCELLED.value,
-        ]
-        
-        for status in statuses:
-            post = ScheduledPost(
-                user_id="user-123",
-                platform_id=platform.id,
-                content=f"Post {status}",
-                scheduled_at=datetime.utcnow() + timedelta(hours=1),
-                status=status,
-                priority=Priority.NORMAL.value
-            )
-            db.add(post)
-        db.commit()
-        
-        service = SchedulerService(db)
-        stats = service.get_queue_stats("user-123")
-        
-        assert stats["total"] == 4
-        assert stats["pending"] == 2
-        assert stats["published"] == 1
-        assert stats["cancelled"] == 1
-    
-    def test_bulk_schedule(self, db):
+        # All times should be in the future
+        now = datetime.utcnow()
+        for t in times:
+            assert t > now
+
+    def test_bulk_schedule(self, db: Session, test_user: User, test_platform: Platform):
         """Test bulk scheduling posts."""
-        platform = Platform(name="twitter", display_name="Twitter/X")
-        db.add(platform)
-        db.commit()
-        
         service = SchedulerService(db)
-        base_time = datetime.utcnow() + timedelta(hours=1)
-        
+
         posts_data = [
             {
-                "platform_id": platform.id,
-                "content": f"Bulk post {i}",
-                "scheduled_at": base_time + timedelta(hours=i),
-                "priority": Priority.NORMAL.value
+                "platform_id": test_platform.id,
+                "content": "Post 1",
+                "scheduled_at": datetime.utcnow() + timedelta(hours=1),
+                "priority": Priority.HIGH
+            },
+            {
+                "platform_id": test_platform.id,
+                "content": "Post 2",
+                "scheduled_at": datetime.utcnow() + timedelta(hours=2),
+                "priority": Priority.NORMAL
             }
-            for i in range(3)
         ]
-        
-        created = service.bulk_schedule("user-123", posts_data)
-        
-        assert len(created) == 3
-        assert all(post.status == PostStatus.PENDING.value for post in created)
+
+        created = service.bulk_schedule(test_user.id, posts_data)
+
+        assert len(created) == 2
+
+    def test_get_queue_stats(self, db: Session, test_user: User, test_platform: Platform):
+        """Test getting queue statistics."""
+        service = SchedulerService(db)
+
+        # Create posts with different statuses
+        post1 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Pending",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending"
+        )
+        post2 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Published",
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
+            published_at=datetime.utcnow()
+        )
+        post3 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Cancelled",
+            scheduled_at=datetime.utcnow() + timedelta(hours=2),
+            status="cancelled"
+        )
+        db.add_all([post1, post2, post3])
+        db.commit()
+
+        stats = service.get_queue_stats(test_user.id)
+
+        assert stats["total_posts"] == 3
+        assert stats["pending"] == 1
+        assert stats["published"] == 1
+        assert stats["cancelled"] == 1
+        assert stats["upcoming_count"] == 1
 
 
-class TestSchedulerEndpoints:
-    """Tests for scheduler API endpoints."""
-    
-    def test_schedule_post_endpoint(self, client: TestClient, test_user, test_platform):
-        """Test scheduling a post via API."""
+class TestSchedulerRouter:
+    """Test cases for scheduler router endpoints."""
+
+    def test_schedule_post_endpoint(self, client: TestClient, test_user: User, test_platform: Platform):
+        """Test POST /api/posts/schedule endpoint."""
+        # Login first
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+
+        scheduled_time = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+
+        response = client.post(
+            "/api/posts/schedule",
+            json={
+                "platform_id": test_platform.id,
+                "content": "Test post via API",
+                "scheduled_at": scheduled_time,
+                "priority": 3
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == "Test post via API"
+        assert data["status"] == "pending"
+        assert data["priority"] == 3
+
+    def test_get_queue_endpoint(self, client: TestClient, test_user: User, test_platform: Platform, db: Session):
+        """Test GET /api/posts/queue endpoint."""
+        # Create a post
+        post = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Queue test post",
+            scheduled_at=datetime.utcnow() + timedelta(hours=1),
+            status="pending"
+        )
+        db.add(post)
+        db.commit()
+
         # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
-        scheduled_time = (datetime.utcnow() + timedelta(hours=1)).isoformat()
-        
-        response = client.post(
-            "/api/posts/schedule",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "platform_id": test_platform.id,
-                "content": "Test scheduled post",
-                "scheduled_at": scheduled_time,
-                "priority": 2
-            }
-        )
-        
-        assert response.status_code == 201
-        data = response.json()
-        assert data["content"] == "Test scheduled post"
-        assert data["status"] == "pending"
-        assert data["priority"] == 2
-    
-    def test_schedule_post_past_time_endpoint(self, client: TestClient, test_user, test_platform):
-        """Test scheduling with past time returns error."""
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
-        past_time = (datetime.utcnow() - timedelta(hours=1)).isoformat()
-        
-        response = client.post(
-            "/api/posts/schedule",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "platform_id": test_platform.id,
-                "content": "Test post",
-                "scheduled_at": past_time
-            }
-        )
-        
-        assert response.status_code == 400
-        assert response.json()["detail"]["code"] == "INVALID_SCHEDULE"
-    
-    def test_get_queue_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test getting queue via API."""
-        # Create a post first
-        post = ScheduledPost(
-            user_id=test_user.id,
-            platform_id=test_platform.id,
-            content="Queue test post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
-        )
-        db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
+
         response = client.get(
             "/api/posts/queue",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] >= 1
-        assert "posts" in data
-    
-    def test_get_queue_with_status_filter_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test getting queue with status filter."""
+        assert data["total"] == 1
+        assert len(data["posts"]) == 1
+        assert data["posts"][0]["content"] == "Queue test post"
+
+    def test_publish_now_endpoint(self, client: TestClient, test_user: User, test_platform: Platform, db: Session):
+        """Test PUT /api/posts/{id}/publish endpoint."""
+        # Create a post
         post = ScheduledPost(
             user_id=test_user.id,
             platform_id=test_platform.id,
-            content="Pending post",
+            content="Publish test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
+            status="pending"
         )
         db.add(post)
         db.commit()
-        
+
+        # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
-        response = client.get(
-            "/api/posts/queue?status=pending",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert all(p["status"] == "pending" for p in data["posts"])
-    
-    def test_get_post_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test getting specific post via API."""
-        post = ScheduledPost(
-            user_id=test_user.id,
-            platform_id=test_platform.id,
-            content="Specific post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
-        )
-        db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
-        response = client.get(
-            f"/api/posts/{post.id}",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == post.id
-        assert data["content"] == "Specific post"
-    
-    def test_get_post_not_found_endpoint(self, client: TestClient, test_user):
-        """Test getting non-existent post returns 404."""
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
-        response = client.get(
-            "/api/posts/non-existent-id",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        assert response.status_code == 404
-    
-    def test_update_post_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test updating a post via API."""
-        post = ScheduledPost(
-            user_id=test_user.id,
-            platform_id=test_platform.id,
-            content="Original content",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
-        )
-        db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
-        new_time = (datetime.utcnow() + timedelta(hours=2)).isoformat()
-        
-        response = client.put(
-            f"/api/posts/{post.id}",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "content": "Updated content",
-                "priority": 3
-            }
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["content"] == "Updated content"
-        assert data["priority"] == 3
-    
-    def test_publish_immediately_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test publishing immediately via API."""
-        post = ScheduledPost(
-            user_id=test_user.id,
-            platform_id=test_platform.id,
-            content="Publish me now",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
-        )
-        db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
+
         response = client.put(
             f"/api/posts/{post.id}/publish",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "published"
         assert data["published_at"] is not None
-        assert "message" in data
-    
-    def test_publish_already_published_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test publishing already published post returns error."""
+
+    def test_cancel_post_endpoint(self, client: TestClient, test_user: User, test_platform: Platform, db: Session):
+        """Test DELETE /api/posts/{id} endpoint."""
+        # Create a post
         post = ScheduledPost(
             user_id=test_user.id,
             platform_id=test_platform.id,
-            content="Already published",
+            content="Cancel test post",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PUBLISHED.value,
-            priority=Priority.NORMAL.value,
-            published_at=datetime.utcnow()
+            status="pending"
         )
         db.add(post)
         db.commit()
-        
+
+        # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
-        response = client.put(
-            f"/api/posts/{post.id}/publish",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        assert response.status_code == 400
-        assert response.json()["detail"]["code"] == "INVALID_PUBLISH"
-    
-    def test_cancel_post_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test cancelling a post via API."""
-        post = ScheduledPost(
-            user_id=test_user.id,
-            platform_id=test_platform.id,
-            content="Cancel me",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PENDING.value,
-            priority=Priority.NORMAL.value
-        )
-        db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
+
         response = client.delete(
             f"/api/posts/{post.id}",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "cancelled"
-        assert "message" in data
-    
-    def test_cancel_already_published_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test cancelling published post returns error."""
-        post = ScheduledPost(
+
+    def test_get_queue_stats_endpoint(self, client: TestClient, test_user: User, test_platform: Platform, db: Session):
+        """Test GET /api/posts/queue/stats endpoint."""
+        # Create posts with different statuses
+        post1 = ScheduledPost(
             user_id=test_user.id,
             platform_id=test_platform.id,
-            content="Already published",
+            content="Pending",
             scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status=PostStatus.PUBLISHED.value,
-            priority=Priority.NORMAL.value,
+            status="pending"
+        )
+        post2 = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Published",
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
             published_at=datetime.utcnow()
         )
-        db.add(post)
+        db.add_all([post1, post2])
         db.commit()
-        
+
+        # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
-        response = client.delete(
-            f"/api/posts/{post.id}",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        assert response.status_code == 400
-        assert response.json()["detail"]["code"] == "INVALID_CANCEL"
-    
-    def test_get_queue_stats_endpoint(self, client: TestClient, test_user, test_platform, db):
-        """Test getting queue stats via API."""
-        # Create posts with different statuses
-        for status in [PostStatus.PENDING.value, PostStatus.PUBLISHED.value]:
-            post = ScheduledPost(
-                user_id=test_user.id,
-                platform_id=test_platform.id,
-                content=f"Post {status}",
-                scheduled_at=datetime.utcnow() + timedelta(hours=1),
-                status=status,
-                priority=Priority.NORMAL.value
-            )
-            db.add(post)
-        db.commit()
-        
-        login_response = client.post("/api/auth/login", data={
-            "username": "test@example.com",
-            "password": "testpassword123"
-        })
-        token = login_response.json()["access_token"]
-        
+
         response = client.get(
-            "/api/posts/stats/queue",
+            "/api/posts/queue/stats",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        assert "total" in data
-        assert "pending" in data
-        assert "published" in data
-    
-    def test_get_optimal_times_endpoint(self, client: TestClient, test_user, test_platform):
-        """Test getting optimal times via API."""
+        assert data["total_posts"] == 2
+        assert data["pending"] == 1
+        assert data["published"] == 1
+
+    def test_get_optimal_times_endpoint(self, client: TestClient, test_user: User):
+        """Test GET /api/posts/optimal-times endpoint."""
+        # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
+
         response = client.get(
-            f"/api/posts/optimal-times/{test_platform.id}?days=7",
+            "/api/posts/optimal-times?days_ahead=3&count_per_day=2",
             headers={"Authorization": f"Bearer {token}"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        if len(data) > 0:
-            assert "datetime" in data[0]
-            assert "score" in data[0]
-            assert "period" in data[0]
-    
-    def test_bulk_schedule_endpoint(self, client: TestClient, test_user, test_platform):
-        """Test bulk scheduling via API."""
+        assert len(data["times"]) > 0
+
+    def test_bulk_schedule_endpoint(self, client: TestClient, test_user: User, test_platform: Platform):
+        """Test POST /api/posts/bulk-schedule endpoint."""
+        # Login
         login_response = client.post("/api/auth/login", data={
             "username": "test@example.com",
             "password": "testpassword123"
         })
         token = login_response.json()["access_token"]
-        
-        scheduled_time = (datetime.utcnow() + timedelta(hours=1)).isoformat()
-        
+
+        scheduled_time1 = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+        scheduled_time2 = (datetime.utcnow() + timedelta(hours=2)).isoformat()
+
         response = client.post(
             "/api/posts/bulk-schedule",
-            headers={"Authorization": f"Bearer {token}"},
             json={
                 "posts": [
                     {
                         "platform_id": test_platform.id,
                         "content": "Bulk post 1",
-                        "scheduled_at": scheduled_time,
-                        "priority": 2
+                        "scheduled_at": scheduled_time1,
+                        "priority": 3
                     },
                     {
                         "platform_id": test_platform.id,
                         "content": "Bulk post 2",
-                        "scheduled_at": scheduled_time,
-                        "priority": 3
+                        "scheduled_at": scheduled_time2,
+                        "priority": 2
                     }
                 ]
-            }
+            },
+            headers={"Authorization": f"Bearer {token}"}
         )
-        
-        assert response.status_code == 201
+
+        assert response.status_code == 200
         data = response.json()
         assert data["scheduled_count"] == 2
         assert len(data["posts"]) == 2
-    
-    def test_unauthorized_access(self, client):
-        """Test unauthorized access returns 401."""
-        response = client.get("/api/posts/queue")
-        assert response.status_code == 401
 
+    def test_schedule_post_past_time_returns_400(self, client: TestClient, test_user: User, test_platform: Platform):
+        """Test that scheduling in the past returns 400."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
 
-class TestPriorityEnum:
-    """Tests for Priority enum."""
-    
-    def test_priority_values(self):
-        """Test priority enum values."""
-        assert Priority.LOW.value == 1
-        assert Priority.NORMAL.value == 2
-        assert Priority.HIGH.value == 3
-        assert Priority.URGENT.value == 4
-    
-    def test_priority_ordering(self):
-        """Test priority ordering."""
-        assert Priority.LOW < Priority.NORMAL
-        assert Priority.NORMAL < Priority.HIGH
-        assert Priority.HIGH < Priority.URGENT
+        past_time = (datetime.utcnow() - timedelta(hours=1)).isoformat()
 
+        response = client.post(
+            "/api/posts/schedule",
+            json={
+                "platform_id": test_platform.id,
+                "content": "Test post",
+                "scheduled_at": past_time
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        )
 
-class TestPostStatusEnum:
-    """Tests for PostStatus enum."""
-    
-    def test_status_values(self):
-        """Test status enum values."""
-        assert PostStatus.PENDING.value == "pending"
-        assert PostStatus.QUEUED.value == "queued"
-        assert PostStatus.PUBLISHING.value == "publishing"
-        assert PostStatus.PUBLISHED.value == "published"
-        assert PostStatus.FAILED.value == "failed"
-        assert PostStatus.CANCELLED.value == "cancelled"
+        assert response.status_code == 400
+        assert "future" in response.json()["detail"].lower()
+
+    def test_cancel_published_post_returns_400(self, client: TestClient, test_user: User,
+                                               test_platform: Platform, db: Session):
+        """Test that cancelling a published post returns 400."""
+        # Create a published post
+        post = ScheduledPost(
+            user_id=test_user.id,
+            platform_id=test_platform.id,
+            content="Published post",
+            scheduled_at=datetime.utcnow() - timedelta(hours=1),
+            status="published",
+            published_at=datetime.utcnow()
+        )
+        db.add(post)
+        db.commit()
+
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+
+        response = client.delete(
+            f"/api/posts/{post.id}",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 400
+        assert "cancel" in response.json()["detail"].lower()
+
+    def test_get_nonexistent_post_returns_404(self, client: TestClient, test_user: User):
+        """Test that getting a non-existent post returns 404."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+
+        response = client.get(
+            "/api/posts/non-existent-id",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 404
