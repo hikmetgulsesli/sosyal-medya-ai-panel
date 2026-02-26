@@ -186,7 +186,7 @@ class TestScrapingEndpoints:
         })
         token = login_response.json()["access_token"]
         
-        # Mock the scraper service
+        # Mock the scraper service using FastAPI dependency override
         mock_profile = TwitterProfile(
             username="testuser",
             display_name="Test User",
@@ -197,11 +197,15 @@ class TestScrapingEndpoints:
             verified=True
         )
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_profile.return_value = mock_profile
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_profile.return_value = mock_profile
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
                 headers={"Authorization": f"Bearer {token}"}
@@ -213,6 +217,8 @@ class TestScrapingEndpoints:
             assert data["display_name"] == "Test User"
             assert data["follower_count"] == 1000
             assert data["verified"] == True
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_get_twitter_profile_rate_limited(self, client: TestClient, test_user, test_platform):
         """Test rate limit handling in API."""
@@ -223,11 +229,15 @@ class TestScrapingEndpoints:
         })
         token = login_response.json()["access_token"]
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_profile.side_effect = RateLimitExceeded("Rate limit exceeded")
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_profile.side_effect = RateLimitExceeded("Rate limit exceeded")
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
                 headers={"Authorization": f"Bearer {token}"}
@@ -236,6 +246,8 @@ class TestScrapingEndpoints:
             assert response.status_code == 429
             data = response.json()
             assert data["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_get_twitter_profile_blocked(self, client: TestClient, test_user, test_platform):
         """Test scraping blocked handling in API."""
@@ -246,11 +258,15 @@ class TestScrapingEndpoints:
         })
         token = login_response.json()["access_token"]
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_profile.side_effect = ScrapingBlocked("Cloudflare blocked")
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_profile.side_effect = ScrapingBlocked("Cloudflare blocked")
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
                 headers={"Authorization": f"Bearer {token}"}
@@ -259,6 +275,8 @@ class TestScrapingEndpoints:
             assert response.status_code == 403
             data = response.json()
             assert data["detail"]["code"] == "SCRAPING_BLOCKED"
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_get_twitter_profile_not_found(self, client: TestClient, test_user, test_platform):
         """Test profile not found handling in API."""
@@ -269,11 +287,15 @@ class TestScrapingEndpoints:
         })
         token = login_response.json()["access_token"]
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_profile.side_effect = ValueError("Profile not found")
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_profile.side_effect = ValueError("Profile not found")
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             response = client.get(
                 "/api/scraping/twitter/nonexistent/profile",
                 headers={"Authorization": f"Bearer {token}"}
@@ -282,6 +304,8 @@ class TestScrapingEndpoints:
             assert response.status_code == 404
             data = response.json()
             assert data["detail"]["code"] == "PROFILE_NOT_FOUND"
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_get_twitter_posts_success(self, client: TestClient, test_user, test_platform):
         """Test getting Twitter posts via API."""
@@ -315,11 +339,15 @@ class TestScrapingEndpoints:
             )
         ]
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_posts.return_value = mock_posts
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_posts.return_value = mock_posts
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             response = client.get(
                 "/api/scraping/twitter/testuser/posts?limit=10",
                 headers={"Authorization": f"Bearer {token}"}
@@ -331,6 +359,8 @@ class TestScrapingEndpoints:
             assert data["total"] == 2
             assert len(data["posts"]) == 2
             assert data["posts"][0]["text"] == "Test tweet 1"
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_get_twitter_posts_limit_validation(self, client: TestClient, test_user, test_platform):
         """Test limit parameter validation."""
@@ -343,11 +373,15 @@ class TestScrapingEndpoints:
         
         mock_posts = []
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_posts.return_value = mock_posts
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_posts.return_value = mock_posts
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        try:
             # Test limit > 50 gets clamped
             response = client.get(
                 "/api/scraping/twitter/testuser/posts?limit=100",
@@ -357,6 +391,8 @@ class TestScrapingEndpoints:
             assert response.status_code == 200
             # Should call with max 50
             mock_scraper.get_posts.assert_called_with("testuser", max_posts=50)
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
     
     def test_rate_limit_endpoint(self, client: TestClient, test_user, test_platform):
         """Test rate limiting on endpoints."""
@@ -407,12 +443,20 @@ class TestScrapingEndpoints:
             created_at=datetime.utcnow()
         )]
         
-        with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
-            mock_scraper = Mock()
-            mock_scraper.get_profile.return_value = mock_profile
-            mock_scraper.get_posts.return_value = mock_posts
-            mock_get_scraper.return_value = mock_scraper
-            
+        mock_scraper = Mock()
+        mock_scraper.get_profile.return_value = mock_profile
+        mock_scraper.get_posts.return_value = mock_posts
+        
+        # Use FastAPI's dependency override
+        from main import app
+        from app.routers.scraping import get_twitter_scraper
+        app.dependency_overrides[get_twitter_scraper] = lambda: mock_scraper
+        
+        # Reset rate limit state by clearing request timestamps
+        from app.routers.scraping import _request_timestamps
+        _request_timestamps.clear()
+        
+        try:
             response = client.post(
                 "/api/scraping/twitter/testuser/sync",
                 headers={"Authorization": f"Bearer {token}"}
@@ -424,6 +468,8 @@ class TestScrapingEndpoints:
             assert data["handle"] == "testuser"
             assert data["posts_synced"] == 1
             assert data["follower_count"] == 1000
+        finally:
+            app.dependency_overrides.pop(get_twitter_scraper, None)
 
 
 class TestTwitterProfileModel:
