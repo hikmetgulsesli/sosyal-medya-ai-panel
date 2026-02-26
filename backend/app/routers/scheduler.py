@@ -1,6 +1,6 @@
 """Scheduler router for managing scheduled posts."""
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status as http_status, Query
 from sqlalchemy.orm import Session
@@ -45,7 +45,13 @@ def create_scheduled_post(
         )
     
     # Validate scheduled time is in the future
-    if post_data.scheduled_at <= datetime.utcnow():
+    # Handle both timezone-aware and timezone-naive datetimes
+    now = datetime.now(timezone.utc)
+    scheduled_at = post_data.scheduled_at
+    if scheduled_at.tzinfo is None:
+        # If naive, assume UTC
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    if scheduled_at <= now:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Scheduled time must be in the future"
@@ -195,7 +201,13 @@ def update_scheduled_post(
         post.media_urls = post_data.media_urls
     
     if post_data.scheduled_at is not None:
-        if post_data.scheduled_at <= datetime.utcnow():
+        # Handle both timezone-aware and timezone-naive datetimes
+        now = datetime.now(timezone.utc)
+        scheduled_at = post_data.scheduled_at
+        if scheduled_at.tzinfo is None:
+            # If naive, assume UTC
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+        if scheduled_at <= now:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Scheduled time must be in the future"

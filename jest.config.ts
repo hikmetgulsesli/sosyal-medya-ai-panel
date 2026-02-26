@@ -7,8 +7,13 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testMatch: ["**/*.test.ts", "**/*.test.tsx"],
+  testMatch: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx", "**/*.test.ts", "**/*.test.tsx"],
+  testPathIgnorePatterns: [
+    "/.worktrees/",
+    "/node_modules/",
+  ],
   transform: {
+    "^.+\\.(ts|tsx)$": "ts-jest",
     "^.+\\.tsx?$": ["ts-jest", {
       tsconfig: {
         jsx: "react-jsx",
