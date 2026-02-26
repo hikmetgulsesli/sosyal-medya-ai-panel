@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { fetchAnalyticsOverview, type AnalyticsApiError } from "@/lib/analytics";
@@ -80,15 +80,16 @@ function MetricCard({ label, value, change, icon: Icon, isLoading }: MetricCardP
 interface FollowerChartProps {
   data: FollowerGrowthPoint[];
   isLoading?: boolean;
+  days?: number;
 }
 
-function FollowerChart({ data, isLoading }: FollowerChartProps) {
+function FollowerChart({ data, isLoading, days = 30 }: FollowerChartProps) {
   if (isLoading) {
     return (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
         <div className="mb-4 flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-[var(--primary)]" />
-          <h2 className="text-lg font-semibold text-[var(--text)]">Follower Growth (30 Days)</h2>
+          <h2 className="text-lg font-semibold text-[var(--text)]">Follower Growth ({days} Days)</h2>
         </div>
         <div className="h-[300px] w-full animate-pulse rounded-lg bg-[var(--surface)]" />
       </div>
@@ -104,7 +105,7 @@ function FollowerChart({ data, isLoading }: FollowerChartProps) {
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
       <div className="mb-4 flex items-center gap-2">
         <TrendingUp className="h-5 w-5 text-[var(--primary)]" />
-        <h2 className="text-lg font-semibold text-[var(--text)]">Follower Growth (30 Days)</h2>
+        <h2 className="text-lg font-semibold text-[var(--text)]">Follower Growth ({days} Days)</h2>
       </div>
       <div className="h-[300px] w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -302,32 +303,90 @@ function PlatformMetrics({ metrics, isLoading }: PlatformMetricsProps) {
   );
 }
 
+export type TimeRange = 7 | 30 | 90;
+
+interface TimeRangeFilterProps {
+  value: TimeRange;
+  onChange: (value: TimeRange) => void;
+  disabled?: boolean;
+}
+
+function TimeRangeFilter({ value, onChange, disabled }: TimeRangeFilterProps) {
+  const ranges: { value: TimeRange; label: string }[] = [
+    { value: 7, label: "7 Days" },
+    { value: 30, label: "30 Days" },
+    { value: 90, label: "90 Days" },
+  ];
+
+  return (
+    <div className="flex gap-2">
+      {ranges.map((range) => (
+        <button
+          key={range.value}
+          onClick={() => onChange(range.value)}
+          disabled={disabled}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all cursor-pointer ${
+            value === range.value
+              ? "bg-[var(--primary)] text-white"
+              : "bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+        >
+          {range.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface ErrorStateProps {
+  message: string;
+  onRetry: () => void;
+}
+
+function ErrorState({ message, onRetry }: ErrorStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[var(--danger)]/20 bg-[var(--danger)]/10 p-8 text-center">
+      <div className="flex items-center gap-3 text-[var(--danger)]">
+        <AlertCircle className="h-6 w-6 shrink-0" />
+        <p className="text-sm font-medium">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[var(--primary-hover)] cursor-pointer active:scale-[0.98]"
+      >
+        Try Again
+      </button>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { getToken } = useAuth();
   const [data, setData] = useState<AnalyticsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>(30);
+
+  const loadAnalytics = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const overview = await fetchAnalyticsOverview(token, timeRange);
+      setData(overview);
+    } catch (err) {
+      const apiError = err as AnalyticsApiError;
+      setError(apiError.message || "Failed to load analytics data");
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken, timeRange]);
 
   useEffect(() => {
-    const loadAnalytics = async () => {
-      const token = getToken();
-      if (!token) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-        const overview = await fetchAnalyticsOverview(token, 30);
-        setData(overview);
-      } catch (err) {
-        const apiError = err as AnalyticsApiError;
-        setError(apiError.message || "Failed to load analytics data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadAnalytics();
-  }, [getToken]);
+  }, [loadAnalytics]);
 
   const metrics = data
     ? [
@@ -348,20 +407,22 @@ export default function AnalyticsPage() {
       <DashboardLayout>
         <div className="space-y-8">
           {/* Header */}
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--text)]">Analytics</h1>
-            <p className="mt-1 text-[var(--text-muted)]">
-              Track your social media performance across all platforms.
-            </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-[var(--text)]">Analytics</h1>
+              <p className="mt-1 text-[var(--text-muted)]">
+                Track your social media performance across all platforms.
+              </p>
+            </div>
+            <TimeRangeFilter
+              value={timeRange}
+              onChange={setTimeRange}
+              disabled={loading}
+            />
           </div>
 
           {/* Error State */}
-          {error && (
-            <div className="flex items-center gap-3 rounded-xl border border-[var(--danger)]/20 bg-[var(--danger)]/10 p-4 text-[var(--danger)]">
-              <AlertCircle className="h-5 w-5 shrink-0" />
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
+          {error && <ErrorState message={error} onRetry={loadAnalytics} />}
 
           {/* Loading State */}
           {loading && !error && (
@@ -385,7 +446,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Follower Growth Chart */}
-          <FollowerChart data={data?.follower_growth ?? []} isLoading={loading} />
+          <FollowerChart data={data?.follower_growth ?? []} isLoading={loading} days={timeRange} />
 
           {/* Platform Metrics & Recent Posts */}
           <div className="grid gap-6 lg:grid-cols-2">
