@@ -180,7 +180,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_profile_success(self, client: TestClient, test_user, mock_scraper):
         """Test getting Twitter profile via API."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -210,7 +210,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_profile_rate_limited(self, client: TestClient, test_user, mock_scraper):
         """Test rate limit handling in API."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -228,7 +228,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_profile_blocked(self, client: TestClient, test_user, mock_scraper):
         """Test scraping blocked handling in API."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -246,7 +246,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_profile_not_found(self, client: TestClient, test_user, mock_scraper):
         """Test profile not found handling in API."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -264,7 +264,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_posts_success(self, client: TestClient, test_user, mock_scraper):
         """Test getting Twitter posts via API."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -308,7 +308,7 @@ class TestScrapingEndpoints:
     def test_get_twitter_posts_limit_validation(self, client: TestClient, test_user, mock_scraper):
         """Test limit parameter validation."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
@@ -327,7 +327,7 @@ class TestScrapingEndpoints:
     def test_sync_twitter_profile(self, client: TestClient, test_user, mock_scraper):
         """Test sync endpoint."""
         # Login
-        login_response = client.post("/api/auth/login?email=test@example.com&password=testpassword123")
+        login_response = client.post("/api/auth/login", data={"username": "test@example.com", "password": "testpassword123"})
         assert login_response.status_code == 200, f"Login failed: {login_response.json()}"
         token = login_response.json()["access_token"]
         
