@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ContentGeneratorPage from "../page";
-import { AuthProvider } from "@/contexts/AuthContext";
 
 // Mock the AuthContext
 jest.mock("@/contexts/AuthContext", () => ({
