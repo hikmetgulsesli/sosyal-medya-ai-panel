@@ -121,3 +121,31 @@ class ErrorResponse(BaseModel):
     code: str
     message: str
     details: Optional[list] = None
+
+
+# Competitor Profile schemas
+class CompetitorProfileBase(BaseModel):
+    username: str = Field(..., max_length=100)
+    display_name: Optional[str] = Field(None, max_length=255)
+    profile_url: Optional[str] = Field(None, max_length=500)
+
+
+class CompetitorProfileCreate(CompetitorProfileBase):
+    platform_id: str
+
+
+class CompetitorProfileResponse(CompetitorProfileBase):
+    id: str
+    user_id: str
+    platform_id: str
+    follower_count: Optional[int] = None
+    following_count: Optional[int] = None
+    post_count: Optional[int] = None
+    bio: Optional[str] = None
+    is_active: bool
+    last_scraped_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

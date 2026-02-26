@@ -3,12 +3,12 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "postgresql://user:password@localhost:5432/social_media_ai"
+    # Database - must be set via environment variable
+    database_url: str = ""
     
-    # JWT
-    secret_key: str = "your-super-secret-key-change-this-in-production-min-32-chars"
-    algorithm: str = "HS256"
+    # JWT - must be set via environment variable
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
