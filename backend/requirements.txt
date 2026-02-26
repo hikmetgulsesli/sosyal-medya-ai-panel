@@ -13,3 +13,13 @@ email-validator==2.2.0
 pytest==8.3.4
 httpx==0.28.1
 pytest-asyncio==0.25.3
+# Scrapling dependencies
+curl_cffi==0.14.0
+lxml==6.0.2
+orjson==3.11.7
+cssselect==1.2.0
+w3lib==2.4.0
+playwright==1.58.0
+tld==0.13.1
+fake-useragent==2.2.0
+browserforge==1.2.4

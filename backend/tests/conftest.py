@@ -1,11 +1,27 @@
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Set test environment BEFORE any app imports
+os.environ["ENVIRONMENT"] = "test"
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import Mock
 
+# Now import app components
 from app.db.database import Base, get_db
-from main import app
+from app.models.models import User, Platform
+from app.services.twitter_scraper import (
+    TwitterScraperService,
+    get_twitter_scraper
+)
 
 # Create in-memory SQLite database for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -26,6 +42,10 @@ def override_get_db():
         db.close()
 
 
+# Import app after setting up test environment
+from main import app
+
+# Override database dependency
 app.dependency_overrides[get_db] = override_get_db
 
 
@@ -50,3 +70,56 @@ def db():
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="function")
+def test_user(db):
+    """Create a test user."""
+    # Use a pre-computed bcrypt hash to avoid backend issues in tests
+    # This hash is for "testpassword123" - generated with bcrypt 4.x
+    hashed_password = "$2b$12$tk0kcdk8eQPVIOq8XTWRB.7I/Il1EIniY8N.9Q5ZcyX2N4qM2wKUq"
+    user = User(
+        email="test@example.com",
+        hashed_password=hashed_password,
+        full_name="Test User",
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture(scope="function")
+def test_platform(db):
+    """Create a test Twitter platform."""
+    platform = Platform(
+        name="twitter",
+        display_name="Twitter/X",
+        description="Twitter social media platform",
+        is_active=True,
+        supports_scraping=True,
+        supports_api=True
+    )
+    db.add(platform)
+    db.commit()
+    db.refresh(platform)
+    return platform
+
+
+@pytest.fixture(scope="function")
+def mock_scraper():
+    """Create a mock Twitter scraper for testing."""
+    mock = Mock(spec=TwitterScraperService)
+    
+    # Override the dependency
+    original_override = app.dependency_overrides.get(get_twitter_scraper)
+    app.dependency_overrides[get_twitter_scraper] = lambda: mock
+    
+    yield mock
+    
+    # Restore original override or remove
+    if original_override:
+        app.dependency_overrides[get_twitter_scraper] = original_override
+    elif get_twitter_scraper in app.dependency_overrides:
+        del app.dependency_overrides[get_twitter_scraper]
