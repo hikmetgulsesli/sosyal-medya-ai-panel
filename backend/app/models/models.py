@@ -210,25 +210,29 @@ class ContentTemplate(Base):
 
 
 class ScrapingHistory(Base):
-    """History of scraping operations."""
+    """History of scraping attempts for competitors."""
     __tablename__ = "scraping_history"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    competitor_id = Column(String(36), ForeignKey("competitor_profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    competitor_id = Column(String(36), ForeignKey("competitor_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    operation_type = Column(String(50), nullable=False)  # 'profile', 'posts', 'hashtags', 'sync'
-    status = Column(String(20), nullable=False, default="pending")  # 'pending', 'success', 'failed', 'retrying'
+    status = Column(String(20), nullable=False)  # 'pending', 'success', 'failed', 'retrying'
+    scrape_type = Column(String(50), nullable=False)  # 'profile', 'posts', 'hashtags', 'sync'
     posts_scraped = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0, nullable=False)
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
+    next_retry_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
     competitor = relationship("CompetitorProfile", backref="scraping_history")
+    user = relationship("User", backref="scraping_history")
     
     __table_args__ = (
-        Index('ix_scraping_history_competitor', 'competitor_id', 'started_at'),
-        Index('ix_scraping_history_user', 'user_id', 'started_at'),
-        Index('ix_scraping_history_status', 'status', 'started_at'),
+        Index('ix_scraping_history_competitor', 'competitor_id', 'created_at'),
+        Index('ix_scraping_history_user_status', 'user_id', 'status'),
+        Index('ix_scraping_history_status_retry', 'status', 'next_retry_at'),
     )
