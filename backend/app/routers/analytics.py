@@ -103,13 +103,16 @@ def get_post_metrics(
         AnalyticsEvent.post_id == post_id
     ).group_by(AnalyticsEvent.event_type).all()
     
-    # Build metrics dictionary
+    # Build metrics dictionary for shares (only tracked via events)
     metrics_dict = {event_type: int(total_value) for event_type, total_value in analytics_summary}
     
-    total_views = metrics_dict.get("view", 0) + (post.view_count or 0)
-    total_likes = metrics_dict.get("like", 0) + post.like_count
-    total_retweets = metrics_dict.get("retweet", 0) + post.repost_count
-    total_replies = metrics_dict.get("reply", 0) + post.reply_count
+    # Use Post model counts as source of truth for current metrics
+    total_views = post.view_count or 0
+    total_likes = post.like_count
+    total_retweets = post.repost_count
+    total_replies = post.reply_count
+    
+    # Shares are only tracked via events, so get them from AnalyticsEvent
     total_shares = metrics_dict.get("share", 0)
     
     # Calculate engagement rate
@@ -212,37 +215,36 @@ def get_dashboard_overview(
     # Summary stats
     total_posts_tracked = posts_query.count()
     total_competitors = len(user_competitor_ids)
-    total_platforms = db.query(Platform).filter(Platform.is_active == True).count()
+    
+    # Count only platforms that have posts from user's competitors
+    user_platform_ids = set(p.platform_id for p in user_posts if p.platform_id)
+    total_platforms = len(user_platform_ids) if user_platform_ids else 0
     
     # Get all posts for this user
     user_posts = posts_query.all()
     post_ids = [p.id for p in user_posts]
     
-    # Calculate totals from post table
+    # Calculate totals from post table (Post counts are source of truth for current metrics)
     total_likes = sum(p.like_count for p in user_posts)
     total_retweets = sum(p.repost_count for p in user_posts)
     total_replies = sum(p.reply_count for p in user_posts)
     total_views = sum(p.view_count or 0 for p in user_posts)
     
-    # Add analytics events within date range
+    # AnalyticsEvents are used for historical tracking only
+    # Shares are only tracked via events (not in Post model), so include those
+    total_shares = 0
     if post_ids:
         analytics_summary = db.query(
             AnalyticsEvent.event_type,
             func.sum(AnalyticsEvent.metric_value).label("total_value")
         ).filter(
             AnalyticsEvent.post_id.in_(post_ids),
-            AnalyticsEvent.recorded_at >= date_from
+            AnalyticsEvent.recorded_at >= date_from,
+            AnalyticsEvent.event_type == "share"  # Only shares are not in Post model
         ).group_by(AnalyticsEvent.event_type).all()
         
         analytics_dict = {event_type: int(total_value) for event_type, total_value in analytics_summary}
-        
-        total_likes += analytics_dict.get("like", 0)
-        total_retweets += analytics_dict.get("retweet", 0)
-        total_replies += analytics_dict.get("reply", 0)
-        total_views += analytics_dict.get("view", 0)
         total_shares = analytics_dict.get("share", 0)
-    else:
-        total_shares = 0
     
     # Calculate average engagement rate
     total_engagement = total_likes + total_retweets + total_replies + total_shares
@@ -263,26 +265,28 @@ def get_dashboard_overview(
         if not platform_posts:
             continue
         
+        # Use Post model counts as source of truth
         p_likes = sum(p.like_count for p in platform_posts)
         p_retweets = sum(p.repost_count for p in platform_posts)
         p_replies = sum(p.reply_count for p in platform_posts)
+        p_views = sum(p.view_count or 0 for p in platform_posts)
         
-        # Add analytics events
+        # Shares are only tracked via events, so include them
+        p_shares = 0
         if platform_post_ids:
             p_analytics = db.query(
                 AnalyticsEvent.event_type,
                 func.sum(AnalyticsEvent.metric_value).label("total_value")
             ).filter(
                 AnalyticsEvent.post_id.in_(platform_post_ids),
-                AnalyticsEvent.recorded_at >= date_from
+                AnalyticsEvent.recorded_at >= date_from,
+                AnalyticsEvent.event_type == "share"
             ).group_by(AnalyticsEvent.event_type).all()
             
             p_analytics_dict = {event_type: int(total_value) for event_type, total_value in p_analytics}
-            p_likes += p_analytics_dict.get("like", 0)
-            p_retweets += p_analytics_dict.get("retweet", 0)
-            p_replies += p_analytics_dict.get("reply", 0)
+            p_shares = p_analytics_dict.get("share", 0)
         
-        p_total_engagement = p_likes + p_retweets + p_replies
+        p_total_engagement = p_likes + p_retweets + p_replies + p_shares
         p_views = sum(p.view_count or 0 for p in platform_posts)
         p_avg_engagement = (p_total_engagement / p_views * 100) if p_views > 0 else 0.0
         
