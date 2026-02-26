@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "node_modules/**",
     // Ignore Python backend files
     "backend/**",
+    // Ignore worktrees
+    ".worktrees/**",
   ]),
 ]);
 
