@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -12,6 +13,34 @@ from app.db.database import get_db
 settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
+
+# Initialize Fernet for API key encryption
+# Use JWT secret as the base for encryption key (in production, use a dedicated encryption key)
+_encryption_key = None
+
+
+def _get_fernet():
+    """Get or create Fernet instance for encryption."""
+    global _encryption_key
+    if _encryption_key is None:
+        # Derive a 32-byte key from JWT secret
+        import base64
+        import hashlib
+        key_hash = hashlib.sha256(settings.jwt_secret.encode()).digest()
+        _encryption_key = base64.urlsafe_b64encode(key_hash)
+    return Fernet(_encryption_key)
+
+
+def encrypt_api_key(api_key: str) -> str:
+    """Encrypt an API key for storage."""
+    f = _get_fernet()
+    return f.encrypt(api_key.encode()).decode()
+
+
+def decrypt_api_key(encrypted_key: str) -> str:
+    """Decrypt an API key."""
+    f = _get_fernet()
+    return f.decrypt(encrypted_key.encode()).decode()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

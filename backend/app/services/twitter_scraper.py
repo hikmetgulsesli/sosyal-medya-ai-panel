@@ -60,18 +60,27 @@ class ScrapingBlocked(Exception):
     pass
 
 
+class RetryableError(Exception):
+    """Raised when an operation should be retried."""
+    def __init__(self, message: str, retry_after: int = 5):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class TwitterScraperService:
     """Service for scraping Twitter/X data using Scrapling."""
     
-    def __init__(self, rate_limit_delay: float = 6.0):
+    def __init__(self, rate_limit_delay: float = 6.0, max_retries: int = 3):
         """Initialize the Twitter scraper service.
         
         Args:
             rate_limit_delay: Delay between requests in seconds (default 6s for ~10 req/min)
+            max_retries: Maximum number of retry attempts for failed requests
         """
         self.adaptor = TwitterAdaptor()
         self.fetcher = Fetcher()
         self.rate_limit_delay = rate_limit_delay
+        self.max_retries = max_retries
         self._last_request_time: Optional[float] = None
         
     def _enforce_rate_limit(self):
@@ -437,6 +446,129 @@ class TwitterScraperService:
             raise
         except Exception as e:
             raise ValueError(f"Failed to fetch tweet: {str(e)}")
+
+    def get_trending_hashtags(self, location: str = "worldwide") -> List[Dict[str, Any]]:
+        """Fetch trending hashtags from Twitter.
+        
+        Args:
+            location: Location for trends (default: worldwide)
+            
+        Returns:
+            List of trending hashtag data
+            
+        Raises:
+            ScrapingBlocked: If scraping is blocked
+            RateLimitExceeded: If rate limited
+            ValueError: If trends cannot be fetched
+        """
+        # Enforce rate limit
+        self._enforce_rate_limit()
+        
+        # Construct trends URL
+        url = "https://twitter.com/explore/tabs/trending"
+        
+        try:
+            # Fetch the trending page
+            response = self.fetcher.get(url, headers=self.adaptor.get_headers())
+            html = response.text
+            
+            # Check for blocks
+            self._check_for_blocks(html)
+            
+            # Extract trending hashtags from HTML
+            hashtags = self._extract_trending_hashtags(html)
+            
+            return hashtags
+            
+        except (ScrapingBlocked, RateLimitExceeded):
+            raise
+        except Exception as e:
+            raise ValueError(f"Failed to fetch trending hashtags: {str(e)}")
+
+    def _extract_trending_hashtags(self, html: str) -> List[Dict[str, Any]]:
+        """Extract trending hashtags from HTML.
+        
+        Args:
+            html: Page HTML containing trending topics
+            
+        Returns:
+            List of trending hashtag data
+        """
+        hashtags = []
+        
+        # Look for trend data in JSON format embedded in the page
+        # Twitter embeds trend data in script tags
+        trend_pattern = r'"name":"([^"]*#[^"]*)"[^}]*"tweet_volume":(\d+|null)'
+        
+        matches = list(re.finditer(trend_pattern, html))
+        
+        for i, match in enumerate(matches[:20]):  # Top 20 trends
+            try:
+                name = match.group(1).encode().decode("unicode_escape")
+                volume_str = match.group(2)
+                
+                # Only include actual hashtags
+                if name.startswith("#"):
+                    volume = int(volume_str) if volume_str and volume_str != "null" else None
+                    hashtags.append({
+                        "rank": i + 1,
+                        "hashtag": name,
+                        "volume": volume,
+                        "scraped_at": datetime.utcnow().isoformat()
+                    })
+            except Exception:
+                continue
+        
+        return hashtags
+
+    def retry_with_backoff(self, func, *args, **kwargs) -> Any:
+        """Execute a function with retry logic and exponential backoff.
+        
+        Args:
+            func: Function to execute
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+            
+        Returns:
+            Result of the function
+            
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        last_exception = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                return func(*args, **kwargs)
+            except RateLimitExceeded as e:
+                # Don't retry on rate limit - wait required
+                raise
+            except ScrapingBlocked as e:
+                # Retry with backoff for blocking
+                if attempt < self.max_retries - 1:
+                    wait_time = (2 ** attempt) + (hash(str(args)) % 10) / 10  # Exponential + jitter
+                    time.sleep(wait_time)
+                    continue
+                raise
+            except RetryableError as e:
+                # Retry with specified wait time
+                if attempt < self.max_retries - 1:
+                    wait_time = e.retry_after * (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+                last_exception = e
+            except Exception as e:
+                # For other errors, retry once
+                if attempt < self.max_retries - 1:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                last_exception = e
+        
+        # All retries exhausted
+        if last_exception:
+            raise last_exception
+        raise Exception("All retry attempts failed")
 
 
 # Singleton instance for reuse
