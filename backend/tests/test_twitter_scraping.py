@@ -177,8 +177,15 @@ class TestTwitterScraperService:
 class TestScrapingEndpoints:
     """Tests for scraping API endpoints."""
     
-    def test_get_twitter_profile_success(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_profile_success(self, client: TestClient, test_user, test_platform):
         """Test getting Twitter profile via API."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         # Mock the scraper service
         mock_profile = TwitterProfile(
             username="testuser",
@@ -197,7 +204,7 @@ class TestScrapingEndpoints:
             
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 200
@@ -207,8 +214,15 @@ class TestScrapingEndpoints:
             assert data["follower_count"] == 1000
             assert data["verified"] == True
     
-    def test_get_twitter_profile_rate_limited(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_profile_rate_limited(self, client: TestClient, test_user, test_platform):
         """Test rate limit handling in API."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
             mock_scraper = Mock()
             mock_scraper.get_profile.side_effect = RateLimitExceeded("Rate limit exceeded")
@@ -216,15 +230,22 @@ class TestScrapingEndpoints:
             
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 429
             data = response.json()
             assert data["detail"]["code"] == "RATE_LIMIT_EXCEEDED"
     
-    def test_get_twitter_profile_blocked(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_profile_blocked(self, client: TestClient, test_user, test_platform):
         """Test scraping blocked handling in API."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
             mock_scraper = Mock()
             mock_scraper.get_profile.side_effect = ScrapingBlocked("Cloudflare blocked")
@@ -232,15 +253,22 @@ class TestScrapingEndpoints:
             
             response = client.get(
                 "/api/scraping/twitter/testuser/profile",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 403
             data = response.json()
             assert data["detail"]["code"] == "SCRAPING_BLOCKED"
     
-    def test_get_twitter_profile_not_found(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_profile_not_found(self, client: TestClient, test_user, test_platform):
         """Test profile not found handling in API."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
             mock_scraper = Mock()
             mock_scraper.get_profile.side_effect = ValueError("Profile not found")
@@ -248,15 +276,22 @@ class TestScrapingEndpoints:
             
             response = client.get(
                 "/api/scraping/twitter/nonexistent/profile",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 404
             data = response.json()
             assert data["detail"]["code"] == "PROFILE_NOT_FOUND"
     
-    def test_get_twitter_posts_success(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_posts_success(self, client: TestClient, test_user, test_platform):
         """Test getting Twitter posts via API."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         mock_posts = [
             TwitterPost(
                 id="123456",
@@ -287,7 +322,7 @@ class TestScrapingEndpoints:
             
             response = client.get(
                 "/api/scraping/twitter/testuser/posts?limit=10",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 200
@@ -297,8 +332,15 @@ class TestScrapingEndpoints:
             assert len(data["posts"]) == 2
             assert data["posts"][0]["text"] == "Test tweet 1"
     
-    def test_get_twitter_posts_limit_validation(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_get_twitter_posts_limit_validation(self, client: TestClient, test_user, test_platform):
         """Test limit parameter validation."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         mock_posts = []
         
         with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
@@ -309,15 +351,22 @@ class TestScrapingEndpoints:
             # Test limit > 50 gets clamped
             response = client.get(
                 "/api/scraping/twitter/testuser/posts?limit=100",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 200
             # Should call with max 50
             mock_scraper.get_posts.assert_called_with("testuser", max_posts=50)
     
-    def test_rate_limit_endpoint(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_rate_limit_endpoint(self, client: TestClient, test_user, test_platform):
         """Test rate limiting on endpoints."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         mock_profile = TwitterProfile(username="testuser")
         
         with patch("app.routers.scraping.get_twitter_scraper") as mock_get_scraper:
@@ -330,15 +379,22 @@ class TestScrapingEndpoints:
             for i in range(11):
                 response = client.get(
                     "/api/scraping/twitter/testuser/profile",
-                    headers={"Authorization": f"Bearer {auth_token}"}
+                    headers={"Authorization": f"Bearer {token}"}
                 )
                 responses.append(response.status_code)
             
             # The last request should be rate limited
             assert 429 in responses
     
-    def test_sync_twitter_profile(self, client: TestClient, test_user, test_platform, auth_token):
+    def test_sync_twitter_profile(self, client: TestClient, test_user, test_platform):
         """Test sync endpoint."""
+        # Login
+        login_response = client.post("/api/auth/login", data={
+            "username": "test@example.com",
+            "password": "testpassword123"
+        })
+        token = login_response.json()["access_token"]
+        
         mock_profile = TwitterProfile(
             username="testuser",
             follower_count=1000
@@ -359,7 +415,7 @@ class TestScrapingEndpoints:
             
             response = client.post(
                 "/api/scraping/twitter/testuser/sync",
-                headers={"Authorization": f"Bearer {auth_token}"}
+                headers={"Authorization": f"Bearer {token}"}
             )
             
             assert response.status_code == 200

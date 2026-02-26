@@ -125,19 +125,19 @@ class ErrorResponse(BaseModel):
 
 # Competitor Profile schemas
 class CompetitorProfileBase(BaseModel):
-    platform_id: str
     username: str = Field(..., max_length=100)
     display_name: Optional[str] = Field(None, max_length=255)
     profile_url: Optional[str] = Field(None, max_length=500)
 
 
 class CompetitorProfileCreate(CompetitorProfileBase):
-    pass
+    platform_id: str
 
 
 class CompetitorProfileResponse(CompetitorProfileBase):
     id: str
     user_id: str
+    platform_id: str
     follower_count: Optional[int] = None
     following_count: Optional[int] = None
     post_count: Optional[int] = None

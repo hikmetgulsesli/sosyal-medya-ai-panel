@@ -3,47 +3,82 @@
 Supports MiniMax as primary provider with OpenAI fallback.
 """
 import os
-import json
-import httpx
+import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+import httpx
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+# Delimiter to separate user input from system instructions (prevent prompt injection)
+INPUT_DELIMITER = "<<<INPUT>>>"
+INPUT_DELIMITER_END = "<<<ENDINPUT>>>"
+
+
+def _build_system_prompt(tone: str) -> str:
+    """Build system prompt based on tone (shared by all providers)."""
+    tone_prompts = {
+        "professional": "You are a professional social media content creator. Write in a professional, business-appropriate tone.",
+        "casual": "You are a friendly social media content creator. Write in a casual, conversational tone.",
+        "witty": "You are a witty social media content creator. Write with humor and clever wordplay.",
+        "inspirational": "You are an inspirational social media content creator. Write motivational and uplifting content.",
+        "educational": "You are an educational content creator. Write informative, clear, and helpful content.",
+        "promotional": "You are a marketing expert. Write persuasive, engaging promotional content.",
+    }
+    return tone_prompts.get(tone, tone_prompts["professional"])
+
+
+def _build_user_prompt(prompt: str, context: Optional[str] = None) -> str:
+    """Build user prompt with delimiter to prevent prompt injection."""
+    if context:
+        return f"{INPUT_DELIMITER}{context}{INPUT_DELIMITER_END}\n\n{INPUT_DELIMITER}{prompt}{INPUT_DELIMITER_END}"
+    return f"{INPUT_DELIMITER}{prompt}{INPUT_DELIMITER_END}"
 
 
 @dataclass
 class AIResponse:
-    """Response from AI provider."""
+    """Standardized AI response format."""
     content: str
     provider: str
+    model: str
     tokens_used: Optional[int] = None
+    finish_reason: Optional[str] = None
     error: Optional[str] = None
+
+
+@dataclass
+class GenerationRequest:
+    """Request for AI content generation."""
+    prompt: str
+    tone: str = "professional"
+    max_length: int = 500
+    temperature: float = 0.7
+    context: Optional[str] = None
+    hashtags: Optional[List[str]] = None
 
 
 class AIProvider(ABC):
     """Abstract base class for AI providers."""
     
     @abstractmethod
-    async def generate_text(
-        self,
-        prompt: str,
-        max_tokens: int = 1000,
-        temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> AIResponse:
-        """Generate text from the AI provider."""
+    def generate_text(self, request: GenerationRequest) -> AIResponse:
+        """Generate text content."""
         pass
     
     @abstractmethod
     def is_available(self) -> bool:
-        """Check if the provider is available (has API key configured)."""
+        """Check if provider is available/configured."""
         pass
 
 
 class MiniMaxProvider(AIProvider):
     """MiniMax AI provider implementation."""
     
-    BASE_URL = "https://api.minimaxi.chat/v1/text/chatcompletion_v2"
     DEFAULT_MODEL = "MiniMax-Text-01"
+    API_URL = "https://api.minimaxi.chat/v1/text/chatcompletion_v2"
     
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("MINIMAX_API_KEY")
@@ -52,313 +87,232 @@ class MiniMaxProvider(AIProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
     
-    async def generate_text(
-        self,
-        prompt: str,
-        max_tokens: int = 1000,
-        temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> AIResponse:
+    def generate_text(self, request: GenerationRequest) -> AIResponse:
         """Generate text using MiniMax API."""
         if not self.api_key:
             return AIResponse(
                 content="",
                 provider="minimax",
+                model=self.model,
                 error="MiniMax API key not configured"
             )
         
-        messages = []
-        if system_prompt:
-            messages.append({
-                "role": "system",
-                "content": system_prompt
-            })
-        messages.append({
-            "role": "user",
-            "content": prompt
-        })
-        
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    self.BASE_URL,
-                    json=payload,
-                    headers=headers
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Build system prompt based on tone
+            system_prompt = _build_system_prompt(request.tone)
+            
+            # Build user prompt with context if provided (using delimiter to prevent prompt injection)
+            user_prompt = _build_user_prompt(request.prompt, request.context)
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": request.temperature,
+                "max_tokens": min(request.max_length * 2, 4096)  # Approximate token count
+            }
+            
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(
+                    self.API_URL,
+                    headers=headers,
+                    json=payload
                 )
                 response.raise_for_status()
                 data = response.json()
+            
+            if "choices" in data and len(data["choices"]) > 0:
+                content = data["choices"][0].get("message", {}).get("content", "")
+                usage = data.get("usage", {})
                 
-                if "choices" in data and len(data["choices"]) > 0:
-                    content = data["choices"][0].get("message", {}).get("content", "")
-                    usage = data.get("usage", {})
-                    tokens_used = usage.get("total_tokens")
-                    
-                    return AIResponse(
-                        content=content,
-                        provider="minimax",
-                        tokens_used=tokens_used
-                    )
-                else:
-                    return AIResponse(
-                        content="",
-                        provider="minimax",
-                        error="No content generated"
-                    )
-        
+                return AIResponse(
+                    content=content.strip(),
+                    provider="minimax",
+                    model=self.model,
+                    tokens_used=usage.get("total_tokens"),
+                    finish_reason=data["choices"][0].get("finish_reason")
+                )
+            else:
+                return AIResponse(
+                    content="",
+                    provider="minimax",
+                    model=self.model,
+                    error=f"Unexpected response format: {data}"
+                )
+                
         except httpx.HTTPError as e:
+            logger.error(f"MiniMax API error: {e}")
             return AIResponse(
                 content="",
                 provider="minimax",
-                error=f"HTTP error: {str(e)}"
+                model=self.model,
+                error=f"API error: {str(e)}"
             )
         except Exception as e:
+            logger.error(f"MiniMax generation error: {e}")
             return AIResponse(
                 content="",
                 provider="minimax",
-                error=f"Error: {str(e)}"
+                model=self.model,
+                error=f"Generation failed: {str(e)}"
             )
 
 
 class OpenAIProvider(AIProvider):
     """OpenAI provider implementation."""
     
-    BASE_URL = "https://api.openai.com/v1/chat/completions"
     DEFAULT_MODEL = "gpt-4o-mini"
     
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = os.getenv("OPENAI_MODEL", self.DEFAULT_MODEL)
+        self.client: Optional[OpenAI] = None
+        if self.api_key:
+            self.client = OpenAI(api_key=self.api_key)
     
     def is_available(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.api_key and self.client)
     
-    async def generate_text(
-        self,
-        prompt: str,
-        max_tokens: int = 1000,
-        temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> AIResponse:
+    def generate_text(self, request: GenerationRequest) -> AIResponse:
         """Generate text using OpenAI API."""
-        if not self.api_key:
+        if not self.client:
             return AIResponse(
                 content="",
                 provider="openai",
+                model=self.model,
                 error="OpenAI API key not configured"
             )
         
-        messages = []
-        if system_prompt:
-            messages.append({
-                "role": "system",
-                "content": system_prompt
-            })
-        messages.append({
-            "role": "user",
-            "content": prompt
-        })
-        
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    self.BASE_URL,
-                    json=payload,
-                    headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                if "choices" in data and len(data["choices"]) > 0:
-                    content = data["choices"][0].get("message", {}).get("content", "")
-                    usage = data.get("usage", {})
-                    tokens_used = usage.get("total_tokens")
-                    
-                    return AIResponse(
-                        content=content,
-                        provider="openai",
-                        tokens_used=tokens_used
-                    )
-                else:
-                    return AIResponse(
-                        content="",
-                        provider="openai",
-                        error="No content generated"
-                    )
-        
-        except httpx.HTTPError as e:
-            return AIResponse(
-                content="",
-                provider="openai",
-                error=f"HTTP error: {str(e)}"
+            system_prompt = _build_system_prompt(request.tone)
+            
+            # Build user prompt with delimiter to prevent prompt injection
+            user_prompt = _build_user_prompt(request.prompt, request.context)
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=request.temperature,
+                max_tokens=min(request.max_length * 2, 4096)
             )
+            
+            return AIResponse(
+                content=response.choices[0].message.content.strip(),
+                provider="openai",
+                model=self.model,
+                tokens_used=response.usage.total_tokens if response.usage else None,
+                finish_reason=response.choices[0].finish_reason
+            )
+            
         except Exception as e:
+            logger.error(f"OpenAI generation error: {e}")
             return AIResponse(
                 content="",
                 provider="openai",
-                error=f"Error: {str(e)}"
+                model=self.model,
+                error=f"Generation failed: {str(e)}"
             )
 
 
 class AIService:
-    """AI Service with primary provider and fallback."""
+    """AI Service with primary/fallback provider support."""
     
     def __init__(self):
-        self.primary = MiniMaxProvider()
-        self.fallback = OpenAIProvider()
+        self.primary_provider: AIProvider = MiniMaxProvider()
+        self.fallback_provider: AIProvider = OpenAIProvider()
     
-    async def generate_text(
-        self,
-        prompt: str,
-        max_tokens: int = 1000,
-        temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> AIResponse:
+    def generate_text(self, request: GenerationRequest) -> AIResponse:
         """Generate text using primary provider with fallback."""
-        
         # Try primary provider first
-        if self.primary.is_available():
-            response = await self.primary.generate_text(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system_prompt=system_prompt
-            )
+        if self.primary_provider.is_available():
+            response = self.primary_provider.generate_text(request)
             if not response.error:
                 return response
+            logger.warning(f"Primary provider failed: {response.error}, trying fallback")
         
-        # Fallback to OpenAI if primary fails or is unavailable
-        if self.fallback.is_available():
-            response = await self.fallback.generate_text(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system_prompt=system_prompt
-            )
-            if not response.error:
-                return response
+        # Try fallback provider
+        if self.fallback_provider.is_available():
+            return self.fallback_provider.generate_text(request)
         
-        # If both fail, return error from primary or fallback
-        if self.primary.is_available():
-            primary_response = await self.primary.generate_text(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system_prompt=system_prompt
-            )
-            return primary_response
-        
+        # No providers available
         return AIResponse(
             content="",
             provider="none",
-            error="No AI provider available. Please configure MINIMAX_API_KEY or OPENAI_API_KEY."
+            model="none",
+            error="No AI providers available. Please configure MINIMAX_API_KEY or OPENAI_API_KEY."
         )
     
-    async def generate_post(
-        self,
-        topic: str,
-        tone: str = "professional",
-        platform: str = "twitter",
-        max_length: int = 280,
-        context: Optional[str] = None
-    ) -> AIResponse:
-        """Generate a social media post."""
-        
-        system_prompt = f"""You are a social media content expert. Create engaging {platform} content.
-Tone: {tone}
-Maximum length: {max_length} characters
-Respond with only the post content, no explanations."""
-        
-        prompt = f"Create a {platform} post about: {topic}"
-        if context:
-            prompt += f"\n\nContext: {context}"
-        
-        return await self.generate_text(
+    def generate_post(self, topic: str, tone: str = "professional", 
+                      max_length: int = 280, context: Optional[str] = None) -> AIResponse:
+        """Generate a single social media post."""
+        prompt = f"Write a social media post about: {topic}\n\nKeep it under {max_length} characters."
+        request = GenerationRequest(
             prompt=prompt,
-            max_tokens=500,
-            temperature=0.7,
-            system_prompt=system_prompt
+            tone=tone,
+            max_length=max_length,
+            context=context
         )
+        return self.generate_text(request)
     
-    async def generate_thread(
-        self,
-        topic: str,
-        tone: str = "professional",
-        num_posts: int = 5,
-        context: Optional[str] = None
-    ) -> AIResponse:
-        """Generate a Twitter/X thread."""
-        
-        system_prompt = f"""You are a Twitter/X thread expert. Create engaging multi-post threads.
-Tone: {tone}
+    def generate_thread(self, topic: str, tone: str = "professional",
+                        num_posts: int = 5, context: Optional[str] = None) -> AIResponse:
+        """Generate a thread of connected posts."""
+        prompt = f"""Write a Twitter/X thread about: {topic}
+
+Create {num_posts} connected posts that flow together as a cohesive thread.
 Each post should be under 280 characters.
 Format as a numbered list (1., 2., etc.).
-Make the thread flow logically with a hook in the first post."""
+Make each post engaging and valuable on its own while contributing to the overall thread."""
         
-        prompt = f"Create a {num_posts}-post Twitter/X thread about: {topic}"
-        if context:
-            prompt += f"\n\nContext: {context}"
-        
-        return await self.generate_text(
+        request = GenerationRequest(
             prompt=prompt,
-            max_tokens=2000,
-            temperature=0.7,
-            system_prompt=system_prompt
+            tone=tone,
+            max_length=num_posts * 300,
+            context=context
         )
+        return self.generate_text(request)
     
-    async def suggest_hashtags(
-        self,
-        content: str,
-        platform: str = "twitter",
-        count: int = 5
-    ) -> AIResponse:
+    def suggest_hashtags(self, content: str, count: int = 5) -> AIResponse:
         """Suggest relevant hashtags for content."""
+        prompt = f"""Given this social media content, suggest {count} relevant hashtags:
+
+Content: {content}
+
+Requirements:
+- Mix of popular and niche hashtags
+- Relevant to the content topic
+- No spaces in hashtags
+- Include the # symbol
+- Format as a comma-separated list
+
+Example: #SocialMedia, #ContentStrategy, #DigitalMarketing"""
         
-        system_prompt = f"""You are a hashtag strategy expert for {platform}.
-Suggest relevant, trending hashtags that will increase reach.
-Respond with only the hashtags (including #), comma-separated, no explanations."""
-        
-        prompt = f"Suggest {count} relevant hashtags for this content:\n\n{content}"
-        
-        return await self.generate_text(
+        request = GenerationRequest(
             prompt=prompt,
-            max_tokens=200,
-            temperature=0.5,
-            system_prompt=system_prompt
+            tone="professional",
+            max_length=200,
+            temperature=0.5
         )
+        return self.generate_text(request)
     
-    def get_available_providers(self) -> List[str]:
-        """Get list of available providers."""
-        providers = []
-        if self.primary.is_available():
-            providers.append("minimax")
-        if self.fallback.is_available():
-            providers.append("openai")
-        return providers
+    def get_available_provider(self) -> str:
+        """Get the name of the currently available provider."""
+        if self.primary_provider.is_available():
+            return "minimax"
+        elif self.fallback_provider.is_available():
+            return "openai"
+        return "none"
 
 
-# Singleton instance
+# Global AI service instance
 ai_service = AIService()
