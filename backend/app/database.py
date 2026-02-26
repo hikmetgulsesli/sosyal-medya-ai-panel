@@ -4,14 +4,12 @@ Database configuration and utilities.
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
 # Create async engine
 engine = create_async_engine(
     settings.DATABASE_URL,
-    poolclass=NullPool if settings.DEBUG else None,
     echo=settings.DEBUG,
 )
 

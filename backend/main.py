@@ -1,69 +1,47 @@
-"""
-Social Media AI Panel - FastAPI Backend
-======================================
-Main application entry point.
-"""
-
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from app.core.config import get_settings
+from app.db.database import engine, Base
+from app.routers import auth
 
-from app.config import settings
-from app.database import init_db
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
-    # Startup
-    await init_db()
-    yield
-    # Shutdown
-    pass
-
+settings = get_settings()
 
 app = FastAPI(
     title="Social Media AI Panel API",
-    description="AI-powered social media management and analytics platform",
+    description="API for Social Media AI Panel - Scraping and AI-powered content management",
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(auth.router)
 
-@app.get("/health", status_code=status.HTTP_200_OK)
-async def health_check():
+
+@app.on_event("startup")
+def create_tables():
+    """Create database tables on startup."""
+    Base.metadata.create_all(bind=engine)
+
+
+@app.get("/health")
+def health_check():
     """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "version": "0.1.0",
-        "service": "social-media-ai-panel-api",
-    }
+    return {"status": "healthy", "version": "0.1.0"}
 
 
 @app.get("/")
-async def root():
+def root():
     """Root endpoint."""
     return {
-        "name": "Social Media AI Panel API",
-        "version": "0.1.0",
+        "message": "Social Media AI Panel API",
         "docs": "/docs",
+        "version": "0.1.0"
     }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host=settings.BACKEND_HOST,
-        port=settings.BACKEND_PORT,
-        reload=settings.DEBUG,
-    )
