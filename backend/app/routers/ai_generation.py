@@ -370,7 +370,8 @@ def get_template(
     """Get a specific content template."""
     template = db.query(ContentTemplate).filter(
         ContentTemplate.id == template_id,
-        ContentTemplate.user_id == current_user.id
+        ContentTemplate.user_id == current_user.id,
+        ContentTemplate.is_active == True
     ).first()
     
     if not template:

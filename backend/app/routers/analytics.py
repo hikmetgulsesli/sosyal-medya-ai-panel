@@ -216,13 +216,13 @@ def get_dashboard_overview(
     total_posts_tracked = posts_query.count()
     total_competitors = len(user_competitor_ids)
     
-    # Count only platforms that have posts from user's competitors
-    user_platform_ids = set(p.platform_id for p in user_posts if p.platform_id)
-    total_platforms = len(user_platform_ids) if user_platform_ids else 0
-    
     # Get all posts for this user
     user_posts = posts_query.all()
     post_ids = [p.id for p in user_posts]
+    
+    # Count only platforms that have posts from user's competitors
+    user_platform_ids = set(p.platform_id for p in user_posts if p.platform_id)
+    total_platforms = len(user_platform_ids) if user_platform_ids else 0
     
     # Calculate totals from post table (Post counts are source of truth for current metrics)
     total_likes = sum(p.like_count for p in user_posts)
