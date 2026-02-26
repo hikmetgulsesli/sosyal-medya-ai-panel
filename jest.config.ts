@@ -16,6 +16,10 @@ const config: Config = {
     "**/__tests__/**/*.test.ts",
     "**/__tests__/**/*.test.tsx",
   ],
+  testPathIgnorePatterns: [
+    "/.worktrees/",
+    "/node_modules/",
+  ],
   transform: {
     "^.+\\.(ts|tsx)$": "ts-jest",
   },
