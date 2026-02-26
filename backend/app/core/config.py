@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://user:password@localhost:5432/social_media_ai"
     
     # JWT
-    secret_key: str = "your-super-secret-key-change-this-in-production-min-32-chars"
-    algorithm: str = "HS256"
+    jwt_secret: str = "your-super-secret-key-change-this-in-production-min-32-chars"
+    jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
