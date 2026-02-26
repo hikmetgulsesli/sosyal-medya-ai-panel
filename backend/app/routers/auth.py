@@ -1,5 +1,5 @@
 """Auth router."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -12,24 +12,30 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login")
-def login(email: str, password: str, db: Session = Depends(get_db)):
+def login(
+    username: str = Form(...),  # OAuth2 uses 'username' for email
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
     """Login user."""
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == username).first()
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    settings = get_settings()
     access_token = create_access_token(
         data={"sub": user.id},
-        secret=settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
         expires_delta=timedelta(minutes=30)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/register")
-def register(email: str, password: str, full_name: str = None, db: Session = Depends(get_db)):
+def register(
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(None),
+    db: Session = Depends(get_db)
+):
     """Register new user."""
     existing = db.query(User).filter(User.email == email).first()
     if existing:

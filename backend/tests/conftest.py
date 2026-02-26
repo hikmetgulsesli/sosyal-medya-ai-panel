@@ -4,9 +4,8 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Set test environment BEFORE any app imports
+# Set test environment before importing app
 os.environ["ENVIRONMENT"] = "test"
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +21,7 @@ from app.services.twitter_scraper import (
     TwitterScraperService,
     get_twitter_scraper
 )
+from main import app
 
 # Create in-memory SQLite database for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -41,9 +41,6 @@ def override_get_db():
     finally:
         db.close()
 
-
-# Import app after setting up test environment
-from main import app
 
 # Override database dependency
 app.dependency_overrides[get_db] = override_get_db
