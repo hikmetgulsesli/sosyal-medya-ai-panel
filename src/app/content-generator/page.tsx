@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -122,14 +122,14 @@ export default function ContentGeneratorPage() {
   }, []);
 
   // Load persisted platform on mount
-  useState(() => {
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("smp_selected_platform") as Platform | null;
       if (saved && PLATFORMS.some(p => p.id === saved)) {
         setPlatform(saved);
       }
     }
-  });
+  }, []);
 
   return (
     <ProtectedRoute>
