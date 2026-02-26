@@ -1,6 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# ============================================
+# Dependencies
+# ============================================
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +10,147 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ============================================
+# Build Outputs
+# ============================================
 /.next/
 /out/
-
-# production
 /build
+/dist
 
-# misc
-.DS_Store
-*.pem
+# ============================================
+# Environment Files
+# ============================================
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
 
-# debug
+# Keep .env.example in repo!
+!.env.example
+
+# ============================================
+# Testing
+# ============================================
+/coverage
+.nyc_output
+*.lcov
+
+# ============================================
+# Debug Logs
+# ============================================
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
-.env*
+# ============================================
+# OS Generated Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 
-# vercel
-.vercel
+# ============================================
+# IDE & Editor Files
+# ============================================
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
 
-# typescript
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# TypeScript
+# ============================================
 *.tsbuildinfo
 next-env.d.ts
+*.d.ts.map
+
+# ============================================
+# Python (Backend)
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+*.egg-info/
+dist/
+build/
+
+# ============================================
+# Docker
+# ============================================
+docker-compose.override.yml
+.dockerignore
+
+# ============================================
+# Database
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+redis-data/
+
+# ============================================
+# Misc
+# ============================================
+.vercel
+.netlify
+.turbo
+.cache
+.temp
+.tmp
+*.pem
+*.cert
+*.key
+
+# ============================================
+# Local Development
+# ============================================
+*.local
+local-*
+notes.md
+TODO.md

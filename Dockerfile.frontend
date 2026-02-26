@@ -1,0 +1,25 @@
+# ============================================
+# Frontend Dockerfile - Next.js
+# ============================================
+
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy project files
+COPY . .
+
+# Expose port
+EXPOSE 3522
+
+# Set environment
+ENV PORT=3522
+ENV HOSTNAME="0.0.0.0"
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"]
