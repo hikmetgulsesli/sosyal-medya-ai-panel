@@ -63,9 +63,16 @@ class PublishResponse(BaseModel):
     external_post_id: Optional[str] = None
 
 
+class PaginationMeta(BaseModel):
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
 class ScheduledPostListWithMeta(BaseModel):
     data: List[ScheduledPostListResponse]
-    meta: dict
+    meta: PaginationMeta
 
 
 # Scheduler query parameters

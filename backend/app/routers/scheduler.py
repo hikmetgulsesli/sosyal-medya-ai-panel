@@ -34,7 +34,7 @@ def create_scheduled_post(
     platform = db.query(Platform).filter(
         and_(
             Platform.id == post_data.platform_id,
-            Platform.is_active == True
+            Platform.is_active
         )
     ).first()
     
