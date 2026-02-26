@@ -332,9 +332,9 @@ class TestAIContentGenerationIntegration:
         response = client.delete(f"/api/ai/templates/{template_id}", headers=auth_headers)
         assert response.status_code == status.HTTP_204_NO_CONTENT
         
-        # Try to get deleted template (may return 404 or 200 if soft deleted)
+        # Try to get deleted template - should return 404 since get_template filters by is_active=True
         response = client.get(f"/api/ai/templates/{template_id}", headers=auth_headers)
-        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_200_OK]
+        assert response.status_code == status.HTTP_404_NOT_FOUND
     
     def test_ai_error_handling(self, client, auth_headers):
         """Test error handling for AI endpoints."""
@@ -720,17 +720,6 @@ class TestSchedulerFlowIntegration:
     
     def test_scheduler_filter_by_status(self, client, auth_headers, test_platform, db):
         """Test filtering scheduled posts by status."""
-        from app.models.models import ScheduledPost
-        
-        # Create pending post
-        pending_post = ScheduledPost(
-            user_id=db.query(db.query(ScheduledPost).filter(ScheduledPost.user_id.isnot(None)).first().user_id).first().id if db.query(ScheduledPost).filter(ScheduledPost.user_id.isnot(None)).first() else 1,
-            platform_id=test_platform.id,
-            content="Pending post",
-            scheduled_at=datetime.utcnow() + timedelta(hours=1),
-            status="pending"
-        )
-        
         # Create posts directly via API
         scheduled_time = datetime.utcnow() + timedelta(hours=2)
         post_data = {
