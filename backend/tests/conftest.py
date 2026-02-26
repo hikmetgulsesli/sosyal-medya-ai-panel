@@ -1,12 +1,3 @@
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Set test environment before importing app
-os.environ["ENVIRONMENT"] = "test"
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -14,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
-from app.models.models import User, Platform
+from app.models.models import Platform as PlatformModel
 from main import app
 
 # Create in-memory SQLite database for testing
@@ -26,6 +17,47 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def seed_test_platforms(db):
+    """Seed platforms for testing."""
+    platforms = [
+        PlatformModel(
+            name="twitter",
+            display_name="Twitter / X",
+            description="Twitter (now X) social media platform",
+            is_active=True,
+            supports_scraping=True,
+            supports_api=True,
+        ),
+        PlatformModel(
+            name="linkedin",
+            display_name="LinkedIn",
+            description="Professional networking platform",
+            is_active=True,
+            supports_scraping=True,
+            supports_api=True,
+        ),
+        PlatformModel(
+            name="instagram",
+            display_name="Instagram",
+            description="Photo and video sharing platform",
+            is_active=True,
+            supports_scraping=False,
+            supports_api=True,
+        ),
+        PlatformModel(
+            name="bluesky",
+            display_name="Bluesky",
+            description="Decentralized social network using AT Protocol",
+            is_active=True,
+            supports_scraping=True,
+            supports_api=True,
+        ),
+    ]
+    for platform in platforms:
+        db.add(platform)
+    db.commit()
 
 
 def override_get_db():
@@ -44,6 +76,11 @@ def client():
     # Create tables
     Base.metadata.create_all(bind=engine)
     
+    # Seed platforms
+    db = TestingSessionLocal()
+    seed_test_platforms(db)
+    db.close()
+    
     with TestClient(app) as c:
         yield c
     
@@ -55,43 +92,9 @@ def client():
 def db():
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
+    seed_test_platforms(db)
     try:
         yield db
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture(scope="function")
-def test_user(db):
-    """Create a test user."""
-    # Use a pre-computed bcrypt hash to avoid backend issues in tests
-    # This hash is for "testpassword123" - generated with bcrypt 4.x
-    hashed_password = "$2b$12$tk0kcdk8eQPVIOq8XTWRB.7I/Il1EIniY8N.9Q5ZcyX2N4qM2wKUq"
-    user = User(
-        email="test@example.com",
-        hashed_password=hashed_password,
-        full_name="Test User",
-        is_active=True
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@pytest.fixture(scope="function")
-def test_platform(db):
-    """Create a test Twitter platform."""
-    platform = Platform(
-        name="twitter",
-        display_name="Twitter/X",
-        description="Twitter social media platform",
-        is_active=True,
-        supports_scraping=True,
-        supports_api=True
-    )
-    db.add(platform)
-    db.commit()
-    db.refresh(platform)
-    return platform
