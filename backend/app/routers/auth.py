@@ -23,14 +23,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     settings = get_settings()
     access_token = create_access_token(
         data={"sub": user.id, "type": "access"},
-        secret=settings.secret_key,
-        algorithm=settings.algorithm,
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
     )
     refresh_token = create_access_token(
         data={"sub": user.id, "type": "refresh"},
-        secret=settings.secret_key,
-        algorithm=settings.algorithm,
         expires_delta=timedelta(days=settings.refresh_token_expire_days)
     )
     return {
