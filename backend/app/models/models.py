@@ -147,6 +147,7 @@ class ScheduledPost(Base):
     media_urls = Column(Text, nullable=True)
     scheduled_at = Column(DateTime, nullable=False)
     status = Column(String(20), default="pending", nullable=False)
+    priority = Column(Integer, default=2, nullable=False)  # 1=LOW, 2=NORMAL, 3=HIGH, 4=URGENT
     published_at = Column(DateTime, nullable=True)
     external_post_id = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)
@@ -160,6 +161,7 @@ class ScheduledPost(Base):
     __table_args__ = (
         Index('ix_scheduled_posts_user_status', 'user_id', 'status'),
         Index('ix_scheduled_posts_scheduled', 'scheduled_at', 'status'),
+        Index('ix_scheduled_posts_priority', 'priority'),
     )
 
 

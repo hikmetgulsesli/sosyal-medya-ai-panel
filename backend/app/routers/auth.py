@@ -1,5 +1,6 @@
 """Auth router."""
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -9,23 +10,35 @@ from app.core.security import verify_password, create_access_token, get_password
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 @router.post("/login")
-def login(email: str, password: str, db: Session = Depends(get_db)):
-    """Login user."""
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(password, user.hashed_password):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Login user with OAuth2 form authentication."""
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     settings = get_settings()
     access_token = create_access_token(
-        data={"sub": user.id},
-        secret=settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-        expires_delta=timedelta(minutes=30)
+        data={"sub": user.id, "type": "access"},
+        secret=settings.secret_key,
+        algorithm=settings.algorithm,
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = create_access_token(
+        data={"sub": user.id, "type": "refresh"},
+        secret=settings.secret_key,
+        algorithm=settings.algorithm,
+        expires_delta=timedelta(days=settings.refresh_token_expire_days)
+    )
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.access_token_expire_minutes * 60
+    }
 
 
 @router.post("/register")

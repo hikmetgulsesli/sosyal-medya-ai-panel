@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.db.database import engine, Base
-from app.routers import auth
+from app.routers import auth, scheduler
 
 settings = get_settings()
 
@@ -23,6 +23,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(scheduler.router, prefix="/api")
 
 
 @app.on_event("startup")
