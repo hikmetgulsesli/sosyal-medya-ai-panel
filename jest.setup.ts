@@ -14,19 +14,11 @@ jest.mock("next/navigation", () => ({
   useParams: () => ({}),
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/",
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    prefetch: jest.fn(),
-    back: jest.fn(),
-    forward: jest.fn(),
-    reload: jest.fn(),
-  }),
   redirect: jest.fn(),
 }));
 
 // Mock fetch globally
-global.fetch = jest.fn();
+global.fetch = jest.fn() as unknown as typeof fetch;
 
 // Mock localStorage
 const localStorageMock = {
