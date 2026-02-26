@@ -1,6 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { LayoutDashboard, TrendingUp, Users, MessageSquare } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = {
   title: "Dashboard | Social Media AI Panel",
@@ -64,7 +65,7 @@ export default function DashboardPage() {
                 { title: "Schedule Posts", description: "Plan your content calendar", href: "/scheduler" },
                 { title: "View Analytics", description: "Check performance metrics", href: "/analytics" },
               ].map((action) => (
-                <a
+                <Link
                   key={action.title}
                   href={action.href}
                   className="group rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--primary)] hover:shadow-sm cursor-pointer"
@@ -74,7 +75,7 @@ export default function DashboardPage() {
                     {action.title}
                   </h3>
                   <p className="mt-1 text-sm text-[var(--text-muted)]">{action.description}</p>
-                </a>
+                </Link>
               ))}
             </div>
           </div>

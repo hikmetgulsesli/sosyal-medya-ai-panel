@@ -34,7 +34,10 @@ export function Sidebar() {
 
   const NavLink = ({ item }: { item: typeof navItems[0] }) => {
     const Icon = item.icon;
-    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    // Dashboard link is only active on exact match, others can have sub-paths active
+    const isActive = item.href === '/dashboard' 
+      ? pathname === item.href 
+      : (pathname === item.href || pathname.startsWith(`${item.href}/`));
 
     return (
       <Link

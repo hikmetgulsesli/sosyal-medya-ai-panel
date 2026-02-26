@@ -90,11 +90,10 @@ export function isAuthenticated(): boolean {
   const tokens = getTokens();
   if (!tokens) return false;
   
-  // Check if token is expired (with 5 minute buffer)
+  // Check if token is expired
   const now = Date.now();
-  const buffer = 5 * 60 * 1000; // 5 minutes
   
-  return (tokens.expiresAt || 0) > now + buffer;
+  return (tokens.expiresAt || 0) > now;
 }
 
 /**
