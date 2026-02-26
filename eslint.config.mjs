@@ -17,8 +17,7 @@ const eslintConfig = defineConfig([
     // Ignore Python backend files
     "backend/**",
     // Ignore worktrees directories
-    ".worktrees/**
-
+    ".worktrees/**"
   ]),
 ]);
 
