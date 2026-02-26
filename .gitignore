@@ -153,3 +153,11 @@ redis-data/
 local-*
 notes.md
 TODO.md
+
+# ============================================
+# OpenClaw / Agent Artifacts
+# ============================================
+.worktrees/
+progress-*.txt
+PROJECT_MEMORY.md
+*.jsonl
