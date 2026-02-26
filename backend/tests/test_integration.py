@@ -574,8 +574,8 @@ class TestErrorHandlingIntegration:
         
         # Try to get competitor with invalid UUID
         response = client.get("/api/competitors/invalid-uuid", headers=headers)
-        # Could be 404 or 422 depending on implementation
-        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
+        # FastAPI returns 422 for invalid UUID format in path parameters
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     
     def test_empty_request_body(self, client):
         """Test handling of empty request bodies."""

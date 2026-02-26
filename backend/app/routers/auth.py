@@ -30,6 +30,7 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str
+    expires_in: int
 
 
 class UserResponse(BaseModel):
@@ -73,7 +74,7 @@ def get_current_user(
     if user_id is None or token_type != "access":
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active).first()
     if user is None:
         raise credentials_exception
 
@@ -102,7 +103,8 @@ def login(
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "expires_in": 30 * 60
     }
 
 
@@ -127,7 +129,8 @@ def login_json(
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "expires_in": 30 * 60
     }
 
 
@@ -174,7 +177,7 @@ def refresh_token(
     if token_type != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
 
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
 
@@ -189,7 +192,8 @@ def refresh_token(
     return {
         "access_token": access_token,
         "refresh_token": new_refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "expires_in": 30 * 60
     }
 
 
