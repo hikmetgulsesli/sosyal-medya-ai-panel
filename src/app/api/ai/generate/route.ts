@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { GeneratePostRequest, GenerateThreadRequest } from "@/types/ai.js";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4522/api";
 
 export async function POST(request: Request) {
   try {

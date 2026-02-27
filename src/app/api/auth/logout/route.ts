@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-// Mock logout API
 export async function POST() {
-  // In a real implementation, this would invalidate the token on the backend
+  // JWT-based auth: tokens are stateless, client-side cleanup handles logout.
+  // If the backend adds token blacklisting in the future, proxy here.
   return NextResponse.json({ success: true });
 }
